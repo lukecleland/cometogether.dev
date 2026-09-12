@@ -1,3 +1,4 @@
+import { acquireLocalMedia } from "../utils/localMedia";
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 /**
@@ -195,6 +196,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	const [localStream, setLocalStream] = useState<MediaStream | null>(null);
 	const [microphoneEnabled, setMicrophoneEnabled] = useState(true);
 	const [cameraEnabled, setCameraEnabled] = useState(true);
+	const [mediaRetryKey, setMediaRetryKey] = useState(0);
 	const [mediaError, setMediaError] = useState<string | null>(null);
 	const [fixedPanels, setFixedPanels] = useState<Record<PanelId, PanelState>>(() => {
 		if (!savedRoom) return defaultFixedPanels();
@@ -428,7 +430,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		return () => clearTimeout(saveTimer);
 	}, [canvas, connectors, customLabels, dockedIds, dynamicPanels, fixedPanels, panelLabels, positionTags, remotePanelStates, roomCode, savedRoom?.drawings, savedRoom?.panels, whiteboardRevision]);
 
-	const { remoteStreams, dataConnection, participantCount, status, error, replaceVideoTrack } = usePeer({
+	const { remoteStreams, dataConnection, participantCount, status, error, mediaStatus, retryMedia, replaceVideoTrack } = usePeer({
 		roomCode,
 		isHost,
 		localStream
@@ -1804,36 +1806,26 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	}, [localStream, replaceVideoTrack]);
 
 	useEffect(() => {
+		let active = true;
 		let stream: MediaStream | undefined;
-
 		const acquireMedia = async () => {
-			try {
-				if (!navigator.mediaDevices?.getUserMedia) {
-					throw new DOMException('Media devices are unavailable', 'NotFoundError');
-				}
-				stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-				setLocalStream(stream);
-			} catch (err) {
-				const mediaFailure = err as Error;
-				// An empty stream marks media setup as complete and lets usePeer
-				// join in receive-only/data-only mode.
-				stream = new MediaStream();
-				setLocalStream(stream);
-
-				if (mediaFailure.name === 'NotAllowedError' || mediaFailure.name === 'PermissionDeniedError') {
-					setMediaError('Camera and microphone access was denied. You joined without sharing media.');
-				} else {
-					setMediaError('Camera and microphone are unavailable. You joined without sharing media.');
-				}
+			const result = await acquireLocalMedia();
+			stream = result.stream;
+			if (!active) {
+				stream.getTracks().forEach(track => track.stop());
+				return;
 			}
+			setLocalStream(stream);
+			setMicrophoneEnabled(stream.getAudioTracks().length > 0);
+			setCameraEnabled(stream.getVideoTracks().length > 0);
+			setMediaError(result.error);
 		};
-
 		void acquireMedia();
-
 		return () => {
-			stream?.getTracks().forEach(t => t.stop());
+			active = false;
+			stream?.getTracks().forEach(track => track.stop());
 		};
-	}, []);
+	}, [mediaRetryKey]);
 
 	// ── Paste onto the canvas ────────────────────────────────────────────────
 	// Whatever is on the clipboard lands where the pointer is, as the nearest
@@ -2514,11 +2506,14 @@ export function Session({ roomCode, isHost }: SessionProps) {
 					{error}
 				</div>
 			)}
-			{mediaError && !error && (
+			{(mediaError || mediaStatus) && !error && (
 				<div
 					className="absolute left-4 right-4 z-50 bg-amber-950/60 border border-amber-700 rounded-xl px-4 py-2.5 text-amber-200 text-sm"
 					style={{ top: 'calc(3rem + env(safe-area-inset-top) + 0.5rem)' }}>
-					{mediaError}
+					{mediaError && <p>{mediaError}</p>}
+					{mediaStatus && <p role="status">{mediaStatus}</p>}
+					{mediaError && <button className="mt-1 underline" onClick={() => setMediaRetryKey(key => key + 1)}>Retry camera / microphone</button>}
+					{mediaStatus && <button className="ml-3 mt-1 underline" onClick={retryMedia}>Retry audio/video connection</button>}
 				</div>
 			)}
 			{(anyRecorderActive || recorderErrors.length > 0) && (

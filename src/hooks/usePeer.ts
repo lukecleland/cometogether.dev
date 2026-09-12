@@ -117,11 +117,15 @@ interface UsePeerResult {
   participantCount: number;
   status: PeerStatus;
   error: string | null;
+  mediaStatus: string | null;
+  retryMedia: () => void;
   replaceVideoTrack: (track: MediaStreamTrack | null) => Promise<void>;
 }
 
 type RoomRole = "owner" | "joiner";
 type MeshControl =
+  | { __watchTogether: "media-capabilities"; canSendMedia: boolean }
+  | { __watchTogether: "media-retry" }
   | { __watchTogether: "roster"; peers: string[] }
   | { __watchTogether: "room-full" }
   | { __watchTogether: "ping"; nonce: string }
@@ -218,6 +222,10 @@ export function usePeer({
   const [status, setStatus] = useState<PeerStatus>("idle");
   const [error, setError] = useState<string | null>(null);
 
+  const [mediaStatus, setMediaStatus] = useState<string | null>(null);
+  const retryMediaRef = useRef<() => void>(() => {});
+  const retryMedia = useCallback(() => retryMediaRef.current(), []);
+
   const peerRef = useRef<Peer | null>(null);
   const meshRef = useRef(new MeshDataConnection());
   const callsRef = useRef<Map<string, MediaConnection>>(new Map());
@@ -249,6 +257,22 @@ export function usePeer({
     callsRef.current = calls;
     const mediaRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
     const streams = new Map<string, MediaStream>();
+    const capabilities = new Map<string, boolean>();
+    const attempts = new Map<string, number>();
+    const callCleanups = new Map<MediaConnection, () => void>();
+    const hasMedia = () => localStream.getTracks().some(track => track.readyState !== "ended");
+    const publishMediaStatus = () => {
+      const peers = mesh.peers();
+      const pending = peers.filter(id => (hasMedia() || capabilities.get(id) !== false) &&
+        calls.get(id)?.peerConnection?.connectionState !== "connected");
+      setMediaStatus(!peers.length ? null : pending.length
+        ? pending.some(id => (attempts.get(id) ?? 0) >= 5)
+          ? "Audio/video could not connect. Retry, or try another network."
+          : `Connecting audio/video with ${pending.length} participant${pending.length === 1 ? "" : "s"}…`
+        : !hasMedia() && peers.every(id => capabilities.get(id) === false)
+          ? "Everyone joined without a camera or microphone."
+          : null);
+    };
 
     const publishStreams = () => {
       setRemoteStreams(
@@ -274,6 +298,11 @@ export function usePeer({
     };
 
     const clearMesh = () => {
+      callCleanups.forEach(cleanup => cleanup());
+      callCleanups.clear();
+      capabilities.clear();
+      attempts.clear();
+      setMediaStatus(null);
       dataConnections.clear();
       mesh.closeAll();
       for (const call of calls.values()) call.close();
@@ -297,10 +326,10 @@ export function usePeer({
     };
 
     const shouldInitiateCall = (peer: Peer, targetId: string) =>
-      peer.id.localeCompare(targetId) > 0 && localStream.getTracks().length > 0;
+      hasMedia() && (capabilities.get(targetId) === false || peer.id.localeCompare(targetId) > 0);
 
     const scheduleCall = (peer: Peer, targetId: string, delay = 120) => {
-      if (!active || calls.has(targetId) || mediaRetryTimers.has(targetId)) return;
+      if (!active || calls.has(targetId) || mediaRetryTimers.has(targetId) || (attempts.get(targetId) ?? 0) >= 5) return;
       const timer = setTimeout(() => {
         mediaRetryTimers.delete(targetId);
         if (active && mesh.has(targetId) && shouldInitiateCall(peer, targetId)) callPeer(peer, targetId);
@@ -311,33 +340,63 @@ export function usePeer({
     const setupCall = (peer: Peer, call: MediaConnection) => {
       const previous = calls.get(call.peer);
       calls.set(call.peer, call);
-      if (previous && previous !== call) previous.close();
+      if (previous && previous !== call) {
+        callCleanups.get(previous)?.();
+        previous.close();
+      }
+      let wasConnected = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const pc = call.peerConnection;
+      const recover = () => {
+        if (!active || calls.get(call.peer) !== call) return;
+        cleanup();
+        calls.delete(call.peer);
+        streams.delete(call.peer);
+        call.close();
+        if (wasConnected && !shouldInitiateCall(peer, call.peer)) {
+          dataConnections.get(call.peer)?.send({ __watchTogether: "media-retry" } satisfies MeshControl);
+        }
+        publishStreams();
+        scheduleCall(peer, call.peer, Math.min(1000 * (attempts.get(call.peer) ?? 1), 5000));
+        publishMediaStatus();
+      };
+      const monitor = () => {
+        if (!active || calls.get(call.peer) !== call) return;
+        if (pc.connectionState === "connected") {
+          wasConnected = true;
+          if (timer) clearTimeout(timer);
+          timer = undefined;
+          attempts.delete(call.peer);
+        } else if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+          recover();
+        } else if (!timer) {
+          timer = setTimeout(recover, pc.connectionState === "disconnected" ? 12_000 : 20_000);
+        }
+        publishMediaStatus();
+      };
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        pc.removeEventListener("connectionstatechange", monitor);
+        callCleanups.delete(call);
+      };
+      callCleanups.set(call, cleanup);
+      pc.addEventListener("connectionstatechange", monitor);
+      monitor();
 
       call.on("stream", stream => {
         if (!active || calls.get(call.peer) !== call) return;
         streams.set(call.peer, stream);
         publishStreams();
       });
-      call.on("close", () => {
-        if (!active || calls.get(call.peer) !== call) return;
-        calls.delete(call.peer);
-        streams.delete(call.peer);
-        publishStreams();
-        scheduleCall(peer, call.peer, 350);
-      });
-      call.on("error", () => {
-        if (calls.get(call.peer) === call) {
-          calls.delete(call.peer);
-          streams.delete(call.peer);
-          publishStreams();
-          scheduleCall(peer, call.peer, 350);
-        }
-      });
+      call.on("close", recover);
+      call.on("error", recover);
     };
 
     const callPeer = (peer: Peer, targetId: string) => {
-      if (calls.has(targetId) || localStream.getTracks().length === 0) return;
-      setupCall(peer, peer.call(targetId, localStream));
+      if (calls.has(targetId) || !hasMedia() || !peer.open) return;
+      attempts.set(targetId, (attempts.get(targetId) ?? 0) + 1);
+      const call = peer.call(targetId, localStream);
+      if (call) setupCall(peer, call);
     };
 
     const dialMeshPeer = (peer: Peer, targetId: string) => {
@@ -441,11 +500,11 @@ export function usePeer({
         publishConnectionState();
         if (role === "owner") broadcastRoster(peer);
 
-        const remoteCanSendMedia =
-          (connection.metadata as { canSendMedia?: boolean } | undefined)
-            ?.canSendMedia ?? true;
-        if (!remoteCanSendMedia && localStream!.getTracks().length > 0) callPeer(peer, connection.peer);
-        else scheduleCall(peer, connection.peer);
+        // Metadata belongs to the data-channel initiator, not necessarily the
+        // remote participant. Exchange capabilities in both directions instead.
+        connection.send({ __watchTogether: "media-capabilities", canSendMedia: hasMedia() } satisfies MeshControl);
+        scheduleCall(peer, connection.peer);
+        publishMediaStatus();
       });
 
       connection.on("data", raw => {
@@ -458,6 +517,24 @@ export function usePeer({
           return;
         }
         if (isMeshControl(raw)) {
+          if (raw.__watchTogether === "media-capabilities") {
+            capabilities.set(connection.peer, raw.canSendMedia);
+            scheduleCall(peer, connection.peer);
+            publishMediaStatus();
+          }
+          if (raw.__watchTogether === "media-retry") {
+            const call = calls.get(connection.peer);
+            if (call) {
+              callCleanups.get(call)?.();
+              calls.delete(connection.peer);
+              streams.delete(connection.peer);
+              call.close();
+              publishStreams();
+            }
+            attempts.delete(connection.peer);
+            scheduleCall(peer, connection.peer);
+            publishMediaStatus();
+          }
           if (raw.__watchTogether === "roster") handleRoster(peer, raw.peers);
           if (raw.__watchTogether === "room-full") {
             roomFull = true;
@@ -481,9 +558,13 @@ export function usePeer({
         mesh.remove(connection.peer, connection);
         const call = calls.get(connection.peer);
         calls.delete(connection.peer);
+        if (call) callCleanups.get(call)?.();
         call?.close();
+        capabilities.delete(connection.peer);
+        attempts.delete(connection.peer);
         streams.delete(connection.peer);
         publishStreams();
+        publishMediaStatus();
         if (roomFull) return;
         publishConnectionState();
         if (role === "owner") broadcastRoster(peer);
@@ -530,7 +611,10 @@ export function usePeer({
         if (!active || peerRef.current !== peer) return;
         setError(null);
         mesh.configure(peer.id);
-        if (role === "owner") setStatus("waiting");
+        if (mesh.open) {
+          publishConnectionState();
+          mesh.peers().forEach(id => scheduleCall(peer, id));
+        } else if (role === "owner") setStatus("waiting");
         else dialOwner(peer);
       });
 
@@ -573,10 +657,28 @@ export function usePeer({
       transitionTimer = setTimeout(() => createPeer("owner"), 500);
     }
 
+    retryMediaRef.current = () => {
+      const peer = peerRef.current;
+      if (!peer || !active) return;
+      attempts.clear();
+      for (const id of mesh.peers()) {
+        if (calls.get(id)?.peerConnection.connectionState === "connected") continue;
+        const call = calls.get(id);
+        if (call) {
+          callCleanups.get(call)?.();
+          calls.delete(id);
+          call.close();
+        }
+        dataConnections.get(id)?.send({ __watchTogether: "media-retry" } satisfies MeshControl);
+        scheduleCall(peer, id);
+      }
+      publishMediaStatus();
+    };
     createPeer(role);
 
     return () => {
       active = false;
+      retryMediaRef.current = () => {};
       clearTransition();
       if (signalingTimer) clearTimeout(signalingTimer);
       clearMesh();
@@ -586,5 +688,5 @@ export function usePeer({
     };
   }, [localStream, roomCode, isHost]);
 
-  return { remoteStreams, dataConnection, participantCount, status, error, replaceVideoTrack };
+  return { remoteStreams, dataConnection, participantCount, status, error, mediaStatus, retryMedia, replaceVideoTrack };
 }
