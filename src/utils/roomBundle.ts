@@ -1,4 +1,4 @@
-import { isDawTrack } from "./daw";
+import { normaliseDawTrack, normaliseDawTracks } from "./daw";
 import type { RoomSnapshot } from "./roomPersistence";
 import { ROOM_STATE_VERSION } from "./roomPersistence";
 
@@ -60,7 +60,7 @@ function isRecording(value: unknown): boolean {
 
 function isPanel(value: unknown): boolean {
   if (!isObject(value) || typeof value.id !== "string" || typeof value.type !== "string" || !PANEL_TYPES.has(value.type) || !hasPanelState(value.state)) return false;
-  if (value.dawTracks !== undefined && (!Array.isArray(value.dawTracks) || value.dawTracks.length > 1000 || !value.dawTracks.every(isDawTrack))) return false;
+  if (value.dawTracks !== undefined && (!Array.isArray(value.dawTracks) || value.dawTracks.length > 1000 || !value.dawTracks.every(track => normaliseDawTrack(track) !== null))) return false;
   if (value.code !== undefined && (!isObject(value.code) || typeof value.code.text !== "string" || typeof value.code.language !== "string")) return false;
   if (value.note !== undefined && (!isObject(value.note) || !["text", "chord", "tab"].includes(value.note.kind as string) || typeof value.note.text !== "string" || !Array.isArray(value.note.tab) || !value.note.tab.every(item => typeof item === "string") || !Array.isArray(value.note.chords) || !value.note.chords.every(isChord) || typeof value.note.colour !== "string")) return false;
   if (value.recordings !== undefined && (!Array.isArray(value.recordings) || !value.recordings.every(isRecording))) return false;
@@ -108,5 +108,10 @@ export function parseRoomBundle(source: string): RoomSnapshot {
   if (!isSnapshot(parsed.snapshot)) {
     throw new Error(`This bundle is damaged or uses an unsupported room-state version (expected ${ROOM_STATE_VERSION}).`);
   }
-  return parsed.snapshot;
+  return {
+    ...parsed.snapshot,
+    panels: parsed.snapshot.panels.map(panel => panel.dawTracks
+      ? { ...panel, dawTracks: normaliseDawTracks(panel.dawTracks) }
+      : panel)
+  };
 }

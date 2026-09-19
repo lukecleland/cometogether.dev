@@ -40,7 +40,7 @@ between participants over WebRTC; PeerJS Cloud is used for signalling.
 
 - **YouTube player** — load links by pasting or dropping them onto the canvas;
   play, pause and seek state is shared
-- **Mini DAW** — a shared multitrack window for uploaded audio and microphone takes;
+- **DAW** — a shared multitrack window for uploaded audio and microphone takes;
   arrange waveform clips, trim, duplicate, rename, mute/solo, adjust gain and pan,
   and export a stereo WAV mix. Edits and source recordings are shared with peers;
   playback and recording transport stay local.
@@ -303,27 +303,31 @@ added again because bundles contain metadata, not media bytes. The legacy
 `watchtogether` storage, bundle-format and peer-message identifiers are retained
 for compatibility with existing data and clients.
 
-## Mini DAW
+## DAW
 
-Choose **Mini DAW** from the widget toolbar (or **Add widget** on smaller screens).
-Drop audio recordings into its window, choose **Add audio**, or use the red
-**Record** transport button and **Stop** to finish a take. Each recording becomes
-one track. Click a clip or track header to select it,
-drag it along the timeline, or use the start and trim fields for precise edits.
-The ruler seeks local playback; M/S, volume and pan control the shared mix.
-**Duplicate** reuses the same recording in another track, and **Export WAV** renders
-the current mix locally. Missing source files must finish transferring or be
-restored before playback/export; use **Audio missing — restore file** after a
-metadata-only room import.
+Choose **DAW** from the widget toolbar (or **Add widget** on smaller screens).
+Use **Track → New Audio Track**, or right-click a track header, to add and manage
+tracks. Drop recordings into the window, choose **Add audio**, or press **R** to
+record into the selected track. Without a selected track, importing or recording
+creates one. Tracks can contain multiple regions; deleting a region leaves its
+track and mixer settings intact. Remove tracks explicitly through the Track menu
+or their right-click menu.
+
+Drag regions to move them and drag their edges to trim. The **Edit** menu and
+region right-click menu provide copy, cut, paste at playhead, duplicate, split at
+playhead and delete. Each track header contains mute, solo, volume and a pan dial.
+Drag the dial vertically, use its arrow keys, or double-click to center it.
+**File → Export WAV** renders the mix locally. Missing source files must finish
+transferring or be restored before playback/export; use **Restore missing audio…**
+after a metadata-only room import. Existing one-clip projects migrate automatically.
 
 Projects support up to 30 minutes; individual uploads are limited to 50 MB and
 must use an audio format the browser can decode. Microphone recording requires
-HTTPS or localhost and microphone permission. This first version has one clip
-per track, with no MIDI, effects, beat grid or synchronized recording/playback.
+HTTPS or localhost and microphone permission. There is no MIDI, effects, beat grid or synchronized recording/playback.
 
-Edits to different tracks merge independently. Concurrent edits to the same
-track use logical revisions and a deterministic tie-breaker; removal wins over
-stale edits. Arrangements and source audio use the existing browser-local room
+Track settings and individual regions merge independently. Concurrent edits to
+the same region use logical revisions and a deterministic tie-breaker; removal
+wins over stale edits. Arrangements and source audio use the existing browser-local room
 storage and are sent to late joiners. Participants must be connected to exchange
 changes: this is not a server-hosted project library or offline collaboration.
 Room JSON exports include arrangement metadata but omit the audio files.
@@ -345,14 +349,17 @@ DAW shortcuts. Open **?** for the in-window reference.
 | Space | Play/pause, or finish an active recording |
 | R | Start/finish a microphone take |
 | Return | Go to beginning |
-| Delete / Backspace | Delete the selected track |
+| Delete / Backspace | Delete the selected region |
 | Up / Down | Select the previous/next track |
 | Left / Right | Seek 1 second; Shift seeks 5 seconds |
 | Alt + Left / Right | Nudge the selected clip 0.1 seconds; Shift nudges 1 second |
 | M / S | Toggle mute/solo for the selected track |
-| Cmd/Ctrl + D | Duplicate the selected track |
+| Cmd/Ctrl + D | Duplicate the selected region |
+| Cmd/Ctrl + T | Split the selected region at the playhead |
+| Cmd/Ctrl + C / X / V | Copy / cut / paste a region |
+| Alt + Cmd/Ctrl + N | New audio track |
 | + / - | Zoom the timeline |
 | Escape | Deselect and close shortcut help |
 
 Track edits remain shared; selection, focus, playback and the recording
-transport are local to each participant. Recordings still create a new track.
+transport are local to each participant. Recordings use the selected track, or create one if none is selected.

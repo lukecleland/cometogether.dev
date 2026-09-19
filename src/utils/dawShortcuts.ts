@@ -1,4 +1,9 @@
 export type DawShortcut =
+  | "new-track"
+  | "copy"
+  | "cut"
+  | "paste"
+  | "split"
   | "play"
   | "record"
   | "restart"
@@ -36,9 +41,19 @@ export function dawShortcut(
   if (editing || event.isComposing) return null;
   const key = event.key.toLowerCase();
   if (event.metaKey || event.ctrlKey) {
-    return !event.altKey && !event.shiftKey && key === "d" && !event.repeat
-      ? "duplicate"
-      : null;
+    if (event.repeat || event.shiftKey) return null;
+    if (event.altKey) return key === "n" ? "new-track" : null;
+    return (
+      (
+        {
+          d: "duplicate",
+          c: "copy",
+          x: "cut",
+          v: "paste",
+          t: "split",
+        } as Record<string, DawShortcut>
+      )[key] ?? null
+    );
   }
   if (event.altKey) {
     if (key === "arrowleft") return "nudge-back";
