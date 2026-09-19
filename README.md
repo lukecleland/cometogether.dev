@@ -40,6 +40,10 @@ between participants over WebRTC; PeerJS Cloud is used for signalling.
 
 - **YouTube player** — load links by pasting or dropping them onto the canvas;
   play, pause and seek state is shared
+- **Mini DAW** — a shared multitrack window for uploaded audio and microphone takes;
+  arrange waveform clips, trim, duplicate, rename, mute/solo, adjust gain and pan,
+  and export a stereo WAV mix. Edits and source recordings are shared with peers;
+  playback and recording transport stay local.
 - **Record player** — load an audio file into an animated top-down turntable;
   play, pause and seek state is shared
 - **Mini browser** — enter a URL and render sites that permit iframe embedding
@@ -298,3 +302,27 @@ bundles on the old origin and import them on the new one; media files must be
 added again because bundles contain metadata, not media bytes. The legacy
 `watchtogether` storage, bundle-format and peer-message identifiers are retained
 for compatibility with existing data and clients.
+
+## Mini DAW
+
+Choose **Mini DAW** from the widget toolbar (or **Add widget** on smaller screens).
+Drop audio recordings into its window, choose **Add audio**, or use **Record mic**
+and **Finish take**. Each recording becomes one track. Click a clip to select it,
+drag it along the timeline, or use the start and trim fields for precise edits.
+The ruler seeks local playback; M/S, volume and pan control the shared mix.
+**Duplicate** reuses the same recording in another track, and **Export WAV** renders
+the current mix locally. Missing source files must finish transferring or be
+restored before playback/export; use **Audio missing — restore file** after a
+metadata-only room import.
+
+Projects support up to 30 minutes; individual uploads are limited to 50 MB and
+must use an audio format the browser can decode. Microphone recording requires
+HTTPS or localhost and microphone permission. This first version has one clip
+per track, with no MIDI, effects, beat grid or synchronized recording/playback.
+
+Edits to different tracks merge independently. Concurrent edits to the same
+track use logical revisions and a deterministic tie-breaker; removal wins over
+stale edits. Arrangements and source audio use the existing browser-local room
+storage and are sent to late joiners. Participants must be connected to exchange
+changes: this is not a server-hosted project library or offline collaboration.
+Room JSON exports include arrangement metadata but omit the audio files.

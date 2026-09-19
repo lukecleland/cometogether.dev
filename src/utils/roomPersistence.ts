@@ -1,3 +1,4 @@
+import type { DawTrack } from "./daw";
 import type { CanvasItem } from "../components/Whiteboard";
 import type { CodeContent, NoteContent, PanelState } from "../types/panels";
 
@@ -17,8 +18,9 @@ export interface PersistedRecording {
 
 export interface PersistedPanel {
   id: string;
-  type: "youtube" | "audio" | "browser" | "note" | "code" | "recorder" | "image";
+  type: "youtube" | "audio" | "browser" | "note" | "code" | "recorder" | "image" | "daw";
   state: PanelState;
+  dawTracks?: DawTrack[];
   initialVideoId?: string;
   initialUrl?: string;
   note?: NoteContent;
