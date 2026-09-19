@@ -306,8 +306,9 @@ for compatibility with existing data and clients.
 ## Mini DAW
 
 Choose **Mini DAW** from the widget toolbar (or **Add widget** on smaller screens).
-Drop audio recordings into its window, choose **Add audio**, or use **Record mic**
-and **Finish take**. Each recording becomes one track. Click a clip to select it,
+Drop audio recordings into its window, choose **Add audio**, or use the red
+**Record** transport button and **Stop** to finish a take. Each recording becomes
+one track. Click a clip or track header to select it,
 drag it along the timeline, or use the start and trim fields for precise edits.
 The ruler seeks local playback; M/S, volume and pan control the shared mix.
 **Duplicate** reuses the same recording in another track, and **Export WAV** renders
@@ -326,3 +327,32 @@ stale edits. Arrangements and source audio use the existing browser-local room
 storage and are sent to late joiners. Participants must be connected to exchange
 changes: this is not a server-hosted project library or offline collaboration.
 Room JSON exports include arrangement metadata but omit the audio files.
+
+### DAW transport and keyboard
+
+The transport provides go-to-start, rewind, forward, stop, play/pause and record
+buttons, plus a playback/recording time display. Stop leaves the playhead in
+place; Return goes to the beginning and continues playing if playback was
+already running. Seeking on the ruler also preserves playback. Single-click a
+track name to select it, and double-click (or choose **Rename**) to edit it.
+
+Shortcuts apply only to the focused DAW window. Text fields, number fields and
+sliders retain their normal keyboard behavior; clicking elsewhere releases the
+DAW shortcuts. Open **?** for the in-window reference.
+
+| Key | Action |
+| --- | --- |
+| Space | Play/pause, or finish an active recording |
+| R | Start/finish a microphone take |
+| Return | Go to beginning |
+| Delete / Backspace | Delete the selected track |
+| Up / Down | Select the previous/next track |
+| Left / Right | Seek 1 second; Shift seeks 5 seconds |
+| Alt + Left / Right | Nudge the selected clip 0.1 seconds; Shift nudges 1 second |
+| M / S | Toggle mute/solo for the selected track |
+| Cmd/Ctrl + D | Duplicate the selected track |
+| + / - | Zoom the timeline |
+| Escape | Deselect and close shortcut help |
+
+Track edits remain shared; selection, focus, playback and the recording
+transport are local to each participant. Recordings still create a new track.

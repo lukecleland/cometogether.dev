@@ -229,3 +229,75 @@ test("portable bundles retain DAW edits and reject malformed track metadata", ()
     /damaged/,
   );
 });
+
+const { dawShortcut } = load("src/utils/dawShortcuts.ts");
+const keyEvent = (key, patch = {}) => ({
+  key,
+  code: key === " " ? "Space" : "",
+  ctrlKey: false,
+  metaKey: false,
+  altKey: false,
+  shiftKey: false,
+  repeat: false,
+  ...patch,
+});
+
+test("DAW typing and IME composition never activate transport or destructive shortcuts", () => {
+  for (const key of [
+    " ",
+    "r",
+    "Enter",
+    "Delete",
+    "Backspace",
+    "m",
+    "s",
+    "ArrowDown",
+    "d",
+  ]) {
+    assert.equal(dawShortcut(keyEvent(key), true), null);
+    assert.equal(
+      dawShortcut(keyEvent(key, { isComposing: true }), false),
+      null,
+    );
+  }
+  assert.equal(dawShortcut(keyEvent("d", { metaKey: true }), true), null);
+});
+
+test("DAW shortcuts handle transport, deletion and platform duplicate modifiers", () => {
+  assert.equal(dawShortcut(keyEvent(" "), false), "play");
+  assert.equal(dawShortcut(keyEvent("R"), false), "record");
+  assert.equal(dawShortcut(keyEvent("Enter"), false), "restart");
+  assert.equal(dawShortcut(keyEvent("Delete"), false), "delete");
+  assert.equal(dawShortcut(keyEvent("Backspace"), false), "delete");
+  assert.equal(
+    dawShortcut(keyEvent("d", { metaKey: true }), false),
+    "duplicate",
+  );
+  assert.equal(
+    dawShortcut(keyEvent("d", { ctrlKey: true }), false),
+    "duplicate",
+  );
+  assert.equal(dawShortcut(keyEvent("r", { metaKey: true }), false), null);
+  assert.equal(
+    dawShortcut(keyEvent("d", { ctrlKey: true, altKey: true }), false),
+    null,
+  );
+});
+
+test("holding toggles cannot rapidly start/stop recording or delete multiple tracks", () => {
+  for (const key of [" ", "r", "Delete", "Backspace", "m", "s", "Enter"])
+    assert.equal(dawShortcut(keyEvent(key, { repeat: true }), false), null);
+  assert.equal(
+    dawShortcut(keyEvent("ArrowRight", { repeat: true }), false),
+    "seek-forward",
+  );
+  assert.equal(
+    dawShortcut(
+      keyEvent("ArrowLeft", { altKey: true, shiftKey: true, repeat: true }),
+      false,
+    ),
+    "nudge-back",
+  );
+  assert.equal(dawShortcut(keyEvent("ArrowDown"), false), "next-track");
+  assert.equal(dawShortcut(keyEvent("?"), false), "help");
+});
