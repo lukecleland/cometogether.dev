@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type KeyboardEvent,
+} from "react";
 import { DawPanDial } from "./DawPanDial";
 import { DawMenu, type DawMenuItem } from "./DawMenu";
 import { DawTransportIcon } from "./DawTransportIcon";
@@ -125,6 +131,8 @@ export function DawWidget({
   );
   const analyserRef = useRef<AnalyserNode | null>(null);
   const microphoneSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const rulerRef = useRef<HTMLDivElement>(null);
+  const scrubbingRef = useRef<number | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const recordingStartedRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -605,6 +613,9 @@ export function DawWidget({
       recordingStartedRef.current = performance.now();
       setRecordingSeconds(0);
       setRecording(true);
+      // Disabling Record while permission is pending can move focus to the
+      // document. Restore the DAW shortcut target once capture starts.
+      rootRef.current?.focus({ preventScroll: true });
       recordTimerRef.current = setTimeout(
         () => {
           if (recorder.state === "recording") recorder.stop();
@@ -654,11 +665,41 @@ export function DawWidget({
   const seek = (position: number) => {
     if (recording || busy) return;
     const next = Math.max(0, Math.min(duration, position));
+    setPlayhead(next);
     if (transportRef.current.active && next < duration) void playFrom(next);
     else {
       stop();
       setPlayhead(next);
     }
+  };
+  const scrubTo = (clientX: number) => {
+    const rect = rulerRef.current?.getBoundingClientRect();
+    if (rect) seek(((clientX - rect.left) / rect.width) * timelineSeconds);
+  };
+  const scrubHandlers = {
+    onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
+      if (event.button !== 0 || recording || busy) return;
+      event.preventDefault();
+      event.stopPropagation();
+      scrubbingRef.current = event.pointerId;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      scrubTo(event.clientX);
+    },
+    onPointerMove: (event: ReactPointerEvent<HTMLElement>) => {
+      if (scrubbingRef.current === event.pointerId) scrubTo(event.clientX);
+    },
+    onPointerUp: (event: ReactPointerEvent<HTMLElement>) => {
+      if (scrubbingRef.current !== event.pointerId) return;
+      scrubTo(event.clientX);
+      scrubbingRef.current = null;
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    },
+    onPointerCancel: () => {
+      scrubbingRef.current = null;
+    },
+    onLostPointerCapture: () => {
+      scrubbingRef.current = null;
+    },
   };
   const restart = () => seek(0);
   const moveRegion = (track: DawTrack, region: DawRegion, start: number) =>
@@ -865,6 +906,7 @@ export function DawWidget({
     }
     // Standard keyboard activation still works for window controls and help.
     if (
+      !(recording && action === "play") &&
       (action === "play" || action === "restart") &&
       target.closest("[data-native-keys]")
     )
@@ -1259,19 +1301,16 @@ export function DawWidget({
             </div>
           ) : (
             <div className="relative" style={{ width: timelineWidth + 230 }}>
-              <div className="flex h-7 border-b border-zinc-800 text-[10px] text-zinc-500">
-                <div className="sticky left-0 z-20 w-[230px] shrink-0 bg-zinc-900 px-3 py-1">
+              <div className="flex h-5 border-b border-zinc-800 text-[9px] text-zinc-500">
+                <div className="sticky left-0 z-20 w-[230px] shrink-0 bg-zinc-900 px-3 py-0.5">
                   {active.length} tracks · {time(duration)}
                 </div>
                 <div
-                  className="relative"
+                  ref={rulerRef}
+                  data-time-ruler
+                  className="relative touch-none cursor-ew-resize select-none"
                   style={{ width: timelineWidth }}
-                  onClick={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    seek(
-                      ((e.clientX - rect.left) / rect.width) * timelineSeconds,
-                    );
-                  }}
+                  {...scrubHandlers}
                 >
                   {Array.from(
                     {
@@ -1282,7 +1321,7 @@ export function DawWidget({
                       return (
                         <span
                           key={seconds}
-                          className="absolute top-1 border-l border-zinc-700 pl-1"
+                          className="absolute top-0.5 border-l border-zinc-700 pl-1"
                           style={{
                             left: `${(seconds / timelineSeconds) * 100}%`,
                           }}
@@ -1455,7 +1494,7 @@ export function DawWidget({
                             regionId: region.id,
                           });
                         }}
-                        className="absolute top-1 bottom-1 min-w-1 touch-none overflow-hidden rounded border text-left outline-none focus:ring-1 focus:ring-white"
+                        className="absolute inset-y-0 min-w-1 touch-none overflow-hidden rounded border text-left outline-none focus:ring-1 focus:ring-white"
                         style={{
                           left: `${(region.start / timelineSeconds) * 100}%`,
                           width: `${((region.trimEnd - region.trimStart) / timelineSeconds) * 100}%`,
@@ -1551,7 +1590,7 @@ export function DawWidget({
                       <div
                         data-live-recording
                         aria-label="Live recording waveform"
-                        className="pointer-events-none absolute inset-y-1 z-10 min-w-1 overflow-hidden rounded border border-red-300 bg-red-950/90 text-red-300"
+                        className="pointer-events-none absolute inset-y-0 z-10 min-w-1 overflow-hidden rounded border border-red-300 bg-red-950/90 text-red-300"
                         style={{
                           left: `${(liveTake.start / timelineSeconds) * 100}%`,
                           width: `${(recordingSeconds / timelineSeconds) * 100}%`,
@@ -1596,7 +1635,10 @@ export function DawWidget({
                 }}
               >
                 <span
-                  className="absolute -left-2 top-0 h-5 w-4 rounded-t bg-inherit"
+                  data-playhead-handle
+                  title="Drag to scrub"
+                  {...scrubHandlers}
+                  className="pointer-events-auto absolute -left-1.5 top-0 h-3 w-3 touch-none cursor-ew-resize rounded-t-sm bg-inherit"
                   style={{
                     clipPath: "polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%)",
                   }}
