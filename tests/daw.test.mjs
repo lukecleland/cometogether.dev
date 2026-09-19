@@ -19,7 +19,7 @@ function load(path, imports = {}) {
   return context.exports;
 }
 const daw = load("src/utils/daw.ts");
-const track = (id, patch = {}) => ({
+const legacyTrack = (id, patch = {}) => ({
   id,
   name: id,
   sourceId: id,
@@ -36,6 +36,27 @@ const track = (id, patch = {}) => ({
   editId: id,
   ...patch,
 });
+const track = (id, patch = {}) => {
+  const old = legacyTrack(id, patch);
+  const { sourceId, duration, start, trimStart, trimEnd, ...metadata } = old;
+  return {
+    ...metadata,
+    regions: [
+      {
+        id: `region:${id}`,
+        name: old.name,
+        sourceId,
+        duration,
+        start,
+        trimStart,
+        trimEnd,
+        deleted: old.deleted,
+        revision: old.revision,
+        editId: old.editId,
+      },
+    ],
+  };
+};
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
 test("concurrent additions and edits on different tracks converge without dropping tracks", () => {
@@ -93,17 +114,17 @@ test("rejects invalid trim, timeline, gain and non-finite input", () => {
 
 test("schedules source offsets, delayed starts and seeking past finished clips", () => {
   const clip = track("a", { start: 5, trimStart: 2, trimEnd: 8 });
-  assert.deepEqual(plain(daw.clipSchedule(clip, 0)), {
+  assert.deepEqual(plain(daw.clipSchedule(clip.regions[0], 0)), {
     delay: 5,
     offset: 2,
     duration: 6,
   });
-  assert.deepEqual(plain(daw.clipSchedule(clip, 7)), {
+  assert.deepEqual(plain(daw.clipSchedule(clip.regions[0], 7)), {
     delay: 0,
     offset: 4,
     duration: 4,
   });
-  assert.equal(daw.clipSchedule(clip, 11), null);
+  assert.equal(daw.clipSchedule(clip.regions[0], 11), null);
   assert.equal(daw.dawEnd([clip]), 11);
 });
 
@@ -223,7 +244,7 @@ test("portable bundles retain DAW edits and reject malformed track metadata", ()
     plain(parseRoomBundle(serialiseRoomBundle(snapshot))),
     snapshot,
   );
-  snapshot.panels[0].dawTracks[0].trimEnd = 99;
+  snapshot.panels[0].dawTracks[0].regions[0].trimEnd = 99;
   assert.throws(
     () => parseRoomBundle(serialiseRoomBundle(snapshot)),
     /damaged/,
@@ -300,4 +321,63 @@ test("holding toggles cannot rapidly start/stop recording or delete multiple tra
   );
   assert.equal(dawShortcut(keyEvent("ArrowDown"), false), "next-track");
   assert.equal(dawShortcut(keyEvent("?"), false), "help");
+});
+
+test("legacy tracks migrate without losing source or edits", () => {
+  const old = legacyTrack("saved", { start: 7, trimStart: 2, pan: -0.4 });
+  const migrated = daw.normaliseDawTrack(old);
+  assert.equal(migrated.pan, -0.4);
+  assert.equal(migrated.regions[0].sourceId, "saved");
+  assert.equal(migrated.regions[0].start, 7);
+  assert.equal(migrated.regions[0].trimStart, 2);
+  assert.equal(daw.isDawTrack(migrated), true);
+});
+test("region deletion retains the track and survives delayed updates", () => {
+  const original = track("a");
+  const deleted = {
+    ...original,
+    regions: [{ ...original.regions[0], deleted: true, revision: 2 }],
+  };
+  const merged = daw.mergeDawTrack(
+    daw.mergeDawTrack([original], deleted),
+    original,
+  )[0];
+  assert.equal(merged.deleted, false);
+  assert.equal(daw.visibleRegions(merged).length, 0);
+  assert.equal(daw.dawEnd([merged]), 0);
+  assert.equal(daw.isDawTrack({ ...merged, regions: [] }), true);
+});
+test("concurrent region edits and mixer edits on one track converge", () => {
+  const original = track("a");
+  original.regions.push({ ...original.regions[0], id: "second", start: 10 });
+  const first = {
+    ...original,
+    regions: [{ ...original.regions[0], start: 3, revision: 2, editId: "x" }],
+  };
+  const second = {
+    ...original,
+    regions: [{ ...original.regions[1], start: 15, revision: 2, editId: "y" }],
+  };
+  const mixer = { ...original, pan: 0.5, revision: 3 };
+  const reduce = (updates) => updates.reduce(daw.mergeDawTrack, [original]);
+  const left = reduce([first, second, mixer]);
+  assert.deepEqual(plain(left), plain(reduce([mixer, second, first])));
+  assert.deepEqual(plain(left[0].regions.map((r) => r.start)), [3, 15]);
+  assert.equal(left[0].pan, 0.5);
+});
+test("split preserves source offsets and arrangement length", () => {
+  const r = track("a", { start: 5, trimStart: 2, trimEnd: 8 }).regions[0];
+  const [left, right] = daw.splitDawRegion(r, 8, "right");
+  assert.deepEqual(plain(daw.clipSchedule(left, 0)), {
+    delay: 5,
+    offset: 2,
+    duration: 3,
+  });
+  assert.deepEqual(plain(daw.clipSchedule(right, 0)), {
+    delay: 8,
+    offset: 5,
+    duration: 3,
+  });
+  assert.equal(daw.splitDawRegion(r, 5, "no"), null);
+  assert.equal(daw.splitDawRegion(r, 11, "no"), null);
 });

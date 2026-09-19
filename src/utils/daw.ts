@@ -1,111 +1,204 @@
-/** One non-destructive clip per track. Source audio is stored separately. */
-export interface DawTrack {
+/** Track mixer state and independently editable audio regions. */
+interface DawRevision {
   id: string;
+  deleted: boolean;
+  revision: number;
+  editId: string;
+}
+export interface DawRegion extends DawRevision {
   name: string;
   sourceId: string;
   duration: number;
   start: number;
   trimStart: number;
   trimEnd: number;
+}
+export interface DawTrack extends DawRevision {
+  name: string;
   volume: number;
   pan: number;
   muted: boolean;
   solo: boolean;
-  deleted: boolean;
-  revision: number;
-  editId: string;
+  regions: DawRegion[];
 }
-
 export const MAX_DAW_SECONDS = 1800;
 export const MAX_DAW_FILE_BYTES = 50 * 1024 * 1024;
-
-export function isDawTrack(value: unknown): value is DawTrack {
-  if (!value || typeof value !== "object") return false;
-  const t = value as DawTrack;
+const object = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+const revision = (v: Record<string, unknown>) =>
+  typeof v.id === "string" &&
+  !!v.id &&
+  typeof v.editId === "string" &&
+  !!v.editId &&
+  Number.isSafeInteger(v.revision) &&
+  (v.revision as number) >= 0 &&
+  typeof v.deleted === "boolean";
+const named = (v: Record<string, unknown>) =>
+  typeof v.name === "string" && v.name.length <= 200;
+export function isDawRegion(value: unknown): value is DawRegion {
+  if (!object(value) || !revision(value) || !named(value)) return false;
+  const r = value as unknown as DawRegion;
   return (
-    ["id", "name", "sourceId", "editId"].every(
-      (key) => typeof t[key as keyof DawTrack] === "string",
-    ) &&
-    !!t.id &&
-    !!t.sourceId &&
-    !!t.editId &&
-    t.name.length <= 200 &&
-    [
-      "duration",
-      "start",
-      "trimStart",
-      "trimEnd",
-      "volume",
-      "pan",
-      "revision",
-    ].every((key) => Number.isFinite(t[key as keyof DawTrack])) &&
-    t.duration > 0 &&
-    t.duration <= MAX_DAW_SECONDS &&
-    t.start >= 0 &&
-    t.start + t.trimEnd - t.trimStart <= MAX_DAW_SECONDS &&
-    t.trimStart >= 0 &&
-    t.trimEnd <= t.duration &&
-    t.trimEnd > t.trimStart &&
-    t.volume >= 0 &&
-    t.volume <= 1 &&
-    t.pan >= -1 &&
-    t.pan <= 1 &&
-    Number.isSafeInteger(t.revision) &&
-    t.revision >= 0 &&
-    typeof t.muted === "boolean" &&
-    typeof t.solo === "boolean" &&
-    typeof t.deleted === "boolean"
+    typeof r.sourceId === "string" &&
+    !!r.sourceId &&
+    [r.duration, r.start, r.trimStart, r.trimEnd].every(Number.isFinite) &&
+    r.duration > 0 &&
+    r.duration <= MAX_DAW_SECONDS &&
+    r.start >= 0 &&
+    r.trimStart >= 0 &&
+    r.trimEnd <= r.duration &&
+    r.trimEnd > r.trimStart &&
+    r.start + (r.trimEnd - r.trimStart) <= MAX_DAW_SECONDS
   );
 }
-
-/** Logical revisions + unique tie-breakers converge even when edits cross in flight.
- * Deletion is permanent for an id, so stale edits cannot resurrect a removed track. */
+function trackMetadata(value: unknown): value is Record<string, unknown> {
+  return (
+    object(value) &&
+    revision(value) &&
+    named(value) &&
+    Number.isFinite(value.volume) &&
+    (value.volume as number) >= 0 &&
+    (value.volume as number) <= 1 &&
+    Number.isFinite(value.pan) &&
+    (value.pan as number) >= -1 &&
+    (value.pan as number) <= 1 &&
+    typeof value.muted === "boolean" &&
+    typeof value.solo === "boolean"
+  );
+}
+export function isDawTrack(value: unknown): value is DawTrack {
+  return (
+    trackMetadata(value) &&
+    Array.isArray(value.regions) &&
+    value.regions.length <= 1000 &&
+    value.regions.every(isDawRegion) &&
+    new Set(value.regions.map((r) => r.id)).size === value.regions.length
+  );
+}
+/** Read earlier one-clip tracks without losing recordings, trims or mixer settings. */
+export function normaliseDawTrack(value: unknown): DawTrack | null {
+  if (isDawTrack(value)) return value;
+  if (
+    !trackMetadata(value) ||
+    value.regions !== undefined ||
+    !isDawRegion(value)
+  )
+    return null;
+  const legacy = value as unknown as DawRegion & DawTrack;
+  return {
+    id: legacy.id,
+    name: legacy.name,
+    volume: legacy.volume,
+    pan: legacy.pan,
+    muted: legacy.muted,
+    solo: legacy.solo,
+    deleted: legacy.deleted,
+    revision: legacy.revision,
+    editId: legacy.editId,
+    regions: [
+      {
+        id: `legacy:${legacy.id}`,
+        name: legacy.name,
+        sourceId: legacy.sourceId,
+        duration: legacy.duration,
+        start: legacy.start,
+        trimStart: legacy.trimStart,
+        trimEnd: legacy.trimEnd,
+        deleted: legacy.deleted,
+        revision: legacy.revision,
+        editId: legacy.editId,
+      },
+    ],
+  };
+}
+export const normaliseDawTracks = (tracks: unknown[] = []) =>
+  tracks.map(normaliseDawTrack).filter((t): t is DawTrack => t !== null);
+/** Delete wins; logical revision and unique edit id break concurrent ties. */
+function winner<T extends DawRevision>(a: T, b: T): T {
+  if (a.deleted !== b.deleted) return a.deleted ? a : b;
+  return a.revision > b.revision ||
+    (a.revision === b.revision && a.editId >= b.editId)
+    ? a
+    : b;
+}
+export function mergeDawRegions(
+  current: DawRegion[],
+  incoming: DawRegion[],
+): DawRegion[] {
+  const all = new Map(current.map((r) => [r.id, r]));
+  for (const r of incoming)
+    if (isDawRegion(r))
+      all.set(r.id, all.has(r.id) ? winner(all.get(r.id)!, r) : r);
+  return [...all.values()].sort(
+    (a, b) => a.start - b.start || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
+}
 export function mergeDawTrack(
   tracks: DawTrack[] = [],
-  incoming: DawTrack,
+  value: unknown,
 ): DawTrack[] {
-  if (!isDawTrack(incoming)) return tracks;
+  const incoming = normaliseDawTrack(value);
+  if (!incoming) return tracks;
   const current = tracks.find((t) => t.id === incoming.id);
-  if (
-    (current?.deleted && !incoming.deleted) ||
-    (current &&
-      current.deleted === incoming.deleted &&
-      (current.revision > incoming.revision ||
-        (current.revision === incoming.revision &&
-          current.editId >= incoming.editId)))
-  )
-    return tracks;
-  return [...tracks.filter((t) => t.id !== incoming.id), incoming].sort(
-    (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  const merged = current
+    ? {
+        ...winner(current, incoming),
+        regions: mergeDawRegions(current.regions, incoming.regions),
+      }
+    : { ...incoming, regions: mergeDawRegions([], incoming.regions) };
+  return [...tracks.filter((t) => t.id !== incoming.id), merged].sort((a, b) =>
+    a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
   );
 }
-
+export const visibleRegions = (track: DawTrack) =>
+  track.deleted ? [] : track.regions.filter((r) => !r.deleted);
 export const dawEnd = (tracks: DawTrack[]) =>
   Math.max(
     0,
-    ...tracks
-      .filter((t) => !t.deleted)
-      .map((t) => t.start + t.trimEnd - t.trimStart),
+    ...tracks.flatMap((t) =>
+      visibleRegions(t).map((r) => r.start + r.trimEnd - r.trimStart),
+    ),
   );
 export const audibleTracks = (tracks: DawTrack[]) => {
   const active = tracks.filter((t) => !t.deleted);
   const solo = active.some((t) => t.solo);
   return active.filter((t) => !t.muted && (!solo || t.solo));
 };
-
-export function clipSchedule(track: DawTrack, playhead: number) {
-  const skipped = Math.max(0, playhead - track.start);
-  const duration = track.trimEnd - track.trimStart - skipped;
+export function clipSchedule(region: DawRegion, playhead: number) {
+  if (region.deleted) return null;
+  const skipped = Math.max(0, playhead - region.start);
+  const duration = region.trimEnd - region.trimStart - skipped;
   return duration > 0
     ? {
-        delay: Math.max(0, track.start - playhead),
-        offset: track.trimStart + skipped,
+        delay: Math.max(0, region.start - playhead),
+        offset: region.trimStart + skipped,
         duration,
       }
     : null;
 }
-
-/** Schedule all tracks against one audio clock, including clips starting later. */
+/** Non-destructive split: both regions retain the original source. */
+export function splitDawRegion(
+  region: DawRegion,
+  position: number,
+  rightId: string,
+): [DawRegion, DawRegion] | null {
+  const offset = position - region.start;
+  if (
+    region.deleted ||
+    offset < 0.01 ||
+    offset > region.trimEnd - region.trimStart - 0.01
+  )
+    return null;
+  return [
+    { ...region, trimEnd: region.trimStart + offset },
+    {
+      ...region,
+      id: rightId,
+      start: position,
+      trimStart: region.trimStart + offset,
+    },
+  ];
+}
 export function scheduleDaw(
   context: BaseAudioContext,
   tracks: DawTrack[],
@@ -114,25 +207,26 @@ export function scheduleDaw(
   when: number,
 ) {
   const sources: AudioBufferSourceNode[] = [];
-  for (const track of audibleTracks(tracks)) {
-    const buffer = buffers.get(track.sourceId);
-    const clip = clipSchedule(track, playhead);
-    if (!buffer || !clip) continue;
-    const source = context.createBufferSource();
-    const gain = context.createGain();
-    const pan = context.createStereoPanner();
-    source.buffer = buffer;
-    gain.gain.value = track.volume;
-    pan.pan.value = track.pan;
-    source.connect(gain).connect(pan).connect(context.destination);
-    source.onended = () => {
-      source.disconnect();
-      gain.disconnect();
-      pan.disconnect();
-    };
-    source.start(when + clip.delay, clip.offset, clip.duration);
-    sources.push(source);
-  }
+  for (const track of audibleTracks(tracks))
+    for (const region of visibleRegions(track)) {
+      const buffer = buffers.get(region.sourceId),
+        clip = clipSchedule(region, playhead);
+      if (!buffer || !clip) continue;
+      const source = context.createBufferSource(),
+        gain = context.createGain(),
+        pan = context.createStereoPanner();
+      source.buffer = buffer;
+      gain.gain.value = track.volume;
+      pan.pan.value = track.pan;
+      source.connect(gain).connect(pan).connect(context.destination);
+      source.onended = () => {
+        source.disconnect();
+        gain.disconnect();
+        pan.disconnect();
+      };
+      source.start(when + clip.delay, clip.offset, clip.duration);
+      sources.push(source);
+    }
   return sources;
 }
 

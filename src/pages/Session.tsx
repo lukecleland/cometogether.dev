@@ -1,5 +1,5 @@
 import { DawWidget } from "../components/DawWidget";
-import { mergeDawTrack } from "../utils/daw";
+import { mergeDawTrack, normaliseDawTracks } from "../utils/daw";
 import { acquireLocalMedia } from "../utils/localMedia";
 import { useState, useEffect, useCallback, useRef } from 'react';
 
@@ -219,7 +219,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		initialUrl: panel.initialUrl,
 		note: panel.note,
 		code: panel.code,
-		dawTracks: panel.dawTracks,
+		dawTracks: panel.dawTracks ? normaliseDawTracks(panel.dawTracks) : undefined,
 		playback: panel.playback,
 		mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : undefined,
 		recordingMetadata: panel.recordings,
@@ -405,7 +405,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				initialUrl: panel.initialUrl,
 				note: panel.note,
 				code: panel.code,
-				dawTracks: panel.dawTracks,
+				dawTracks: panel.dawTracks ? normaliseDawTracks(panel.dawTracks) : undefined,
 				audioFileName: panel.type === 'audio' ? panel.initialFile?.name ?? panel.mediaFileName ?? savedRoom?.panels.find(saved => saved.id === panel.id)?.audioFileName : undefined,
 				imageFileName: panel.type === 'image' ? panel.initialFile?.name ?? panel.mediaFileName ?? savedRoom?.panels.find(saved => saved.id === panel.id)?.imageFileName : undefined,
 				recordings: recordingMetadataFor(panel) ?? savedRoom?.panels.find(saved => saved.id === panel.id)?.recordings,
@@ -544,7 +544,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			initialUrl: panel.initialUrl,
 			note: panel.note,
 			code: panel.code,
-			dawTracks: panel.dawTracks,
+			dawTracks: panel.dawTracks ? normaliseDawTracks(panel.dawTracks) : undefined,
 			playback: panel.playback,
 			mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : undefined,
 			recordingMetadata: panel.recordings,
@@ -571,7 +571,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			initialUrl: panel.initialUrl,
 			note: panel.note,
 			code: panel.code,
-			dawTracks: panel.dawTracks,
+			dawTracks: panel.dawTracks ? normaliseDawTracks(panel.dawTracks) : undefined,
 			playback: panel.playback,
 			mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : undefined,
 			recordingMetadata: panel.recordings,
@@ -1523,7 +1523,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			const firstLine = text.split('\n')[0].trim();
 			if (kind === 'text' && firstLine) return firstLine.slice(0, 40);
 		}
-		const base = panel.type === 'daw' ? 'Mini DAW' : panel.type === 'youtube' ? 'YouTube' : panel.type === 'note' ? 'Note' : panel.type === 'browser' ? 'Browser' : panel.type === 'code' ? 'Code' : panel.type === 'recorder' ? 'Recorder' : panel.type === 'image' ? 'Image' : 'Audio';
+		const base = panel.type === 'daw' ? 'DAW' : panel.type === 'youtube' ? 'YouTube' : panel.type === 'note' ? 'Note' : panel.type === 'browser' ? 'Browser' : panel.type === 'code' ? 'Code' : panel.type === 'recorder' ? 'Recorder' : panel.type === 'image' ? 'Image' : 'Audio';
 		const sameType = dynamicPanels.filter(p => p.type === panel.type);
 		if (sameType.length < 2) return base;
 		return `${base} ${sameType.findIndex(p => p.id === panel.id) + 1}`;
@@ -2321,7 +2321,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						onClick={() => spawnPanel('daw', window.innerWidth / 2, window.innerHeight / 2)}
 						className="flex w-full items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-emerald-300 text-xs font-medium px-3 py-2 rounded-lg"
 						title="Add a shared multitrack DAW">
-						<span aria-hidden="true">♫</span><span>Mini DAW</span>
+						<span aria-hidden="true">♫</span><span>DAW</span>
 					</button>
 					<button
 						onClick={() => spawnPanel('audio', window.innerWidth / 2, window.innerHeight / 2)}
@@ -2405,7 +2405,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 									setWidgetMenuOpen(false);
 								}}
 								className="w-full text-left px-2.5 py-2 text-xs text-emerald-300 rounded-lg hover:bg-zinc-800 transition-colors">
-								Mini DAW
+								DAW
 							</button>
 							<button
 								onClick={() => {

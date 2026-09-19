@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { DawPanDial } from "./DawPanDial";
+import { DawMenu, type DawMenuItem } from "./DawMenu";
 import { DawTransportIcon } from "./DawTransportIcon";
 import { dawShortcut } from "../utils/dawShortcuts";
 import type { RecordingClip } from "../types/panels";
 import {
   audibleTracks,
+  visibleRegions,
+  mergeDawTrack,
+  mergeDawRegions,
+  splitDawRegion,
+  type DawRegion,
   dawEnd,
   encodeWav,
   MAX_DAW_FILE_BYTES,
@@ -27,8 +34,6 @@ interface Props {
 
 const button =
   "rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed";
-const field =
-  "w-20 rounded border border-zinc-700 bg-zinc-950 px-1.5 py-1 text-xs text-zinc-200";
 const colours = ["#34d399", "#a78bfa", "#38bdf8", "#fbbf24", "#fb7185"];
 const time = (seconds: number) => {
   const tenths = Math.max(0, Math.floor(seconds * 10));
@@ -40,7 +45,7 @@ function Waveform({
   track,
 }: {
   buffer?: AudioBuffer;
-  track: DawTrack;
+  track: DawRegion;
 }) {
   if (!buffer) return null;
   const samples = buffer.getChannelData(0);
@@ -89,6 +94,17 @@ export function DawWidget({
   const filesRef = useRef(new Map<string, File>());
   const [buffers, setBuffers] = useState(new Map<string, AudioBuffer>());
   const [selected, setSelected] = useState<string | null>(null);
+  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{
+    kind: string;
+    x: number;
+    y: number;
+    trackId?: string;
+    regionId?: string;
+  } | null>(null);
+  const clipboard = useRef<DawRegion | null>(null);
+  const tracksRef = useRef(tracks);
+  tracksRef.current = tracks;
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -102,7 +118,7 @@ export function DawWidget({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const recordingStartedRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const relinkRef = useRef<DawTrack | null>(null);
+  const relinkRef = useRef<DawRegion | null>(null);
   const aliveRef = useRef(true);
   const revisionRef = useRef(0);
   const sourcesRef = useRef<AudioBufferSourceNode[]>([]);
@@ -114,15 +130,21 @@ export function DawWidget({
   const dragRef = useRef<{
     id: string;
     x: number;
-    start: number;
+    region: DawRegion;
+    edge: string;
     pixelsPerSecond: number;
   } | null>(null);
   const active = tracks.filter((t) => !t.deleted);
   const selectedTrack = active.find((t) => t.id === selected);
+  const selectedRegion =
+    selectedTrack &&
+    visibleRegions(selectedTrack).find((r) => r.id === selectedRegionId);
   const duration = dawEnd(tracks);
   const timelineSeconds = Math.max(30, duration + 5);
   const timelineWidth = Math.max(500, timelineSeconds * zoom);
-  const missing = audibleTracks(tracks).some((t) => !buffers.has(t.sourceId));
+  const missing = audibleTracks(tracks).some((t) =>
+    visibleRegions(t).some((r) => !buffers.has(r.sourceId)),
+  );
 
   const context = () =>
     contextRef.current ?? (contextRef.current = new AudioContext());
@@ -275,25 +297,59 @@ export function DawWidget({
     return () => clearInterval(timer);
   }, [recording]);
 
-  const publish = (track: DawTrack, patch: Partial<DawTrack> = {}) => {
+  const revision = () => {
     revisionRef.current =
       Math.max(
         revisionRef.current,
-        ...tracks.map((t) => t.revision),
-        track.revision,
+        ...tracksRef.current.flatMap((t) => [
+          t.revision,
+          ...t.regions.map((r) => r.revision),
+        ]),
       ) + 1;
-    onTrack({
-      ...track,
-      ...patch,
-      revision: revisionRef.current,
-      editId: crypto.randomUUID(),
+    return { revision: revisionRef.current, editId: crypto.randomUUID() };
+  };
+  const sendTrack = (track: DawTrack) => {
+    tracksRef.current = mergeDawTrack(tracksRef.current, track);
+    onTrack(track);
+  };
+  const publish = (track: DawTrack, patch: Partial<DawTrack> = {}) => {
+    const latest = tracksRef.current.find((t) => t.id === track.id) ?? track;
+    sendTrack({ ...latest, ...patch, ...revision() });
+  };
+  const publishRegions = (track: DawTrack, regions: DawRegion[]) => {
+    const latest = tracksRef.current.find((t) => t.id === track.id) ?? track;
+    if (latest.deleted) return;
+    sendTrack({
+      ...latest,
+      regions: mergeDawRegions(
+        latest.regions,
+        regions.map((r) => ({ ...r, ...revision() })),
+      ),
     });
+  };
+  const newTrack = (name = `Audio ${active.length + 1}`) => {
+    const track: DawTrack = {
+      id: crypto.randomUUID(),
+      name,
+      volume: 0.8,
+      pan: 0,
+      muted: false,
+      solo: false,
+      regions: [],
+      deleted: false,
+      ...revision(),
+    };
+    sendTrack(track);
+    setSelected(track.id);
+    setSelectedRegionId(null);
+    return track;
   };
 
   const addFiles = async (
     files: File[],
-    relink: DawTrack | null = null,
+    relink: DawRegion | null = null,
     start = playhead,
+    targetId = selected,
   ) => {
     setBusy(true);
     setError("");
@@ -320,7 +376,14 @@ export function DawWidget({
         filesRef.current.set(sourceId, file);
         setBuffers(new Map(buffersRef.current));
         if (!relink) {
-          const track: DawTrack = {
+          const target = targetId
+            ? tracksRef.current.find((t) => t.id === targetId && !t.deleted)
+            : newTrack(file.name.slice(0, 200));
+          if (!target)
+            throw new Error(
+              "The target track was removed. Add a track and import the recording again.",
+            );
+          const region: DawRegion = {
             id: crypto.randomUUID(),
             sourceId,
             name: file.name.slice(0, 200),
@@ -328,16 +391,14 @@ export function DawWidget({
             start,
             trimStart: 0,
             trimEnd: decoded.duration,
-            volume: 0.8,
-            pan: 0,
-            muted: false,
-            solo: false,
             deleted: false,
             revision: 0,
             editId: "",
           };
-          publish(track);
-          setSelected(track.id);
+          publishRegions(target, [region]);
+          setSelected(target.id);
+          setSelectedRegionId(region.id);
+          if (targetId) start += decoded.duration;
         }
         onFile({ id: sourceId, name: file.name, file });
       }
@@ -534,55 +595,179 @@ export function DawWidget({
     }
   };
   const restart = () => seek(0);
-  const updateNumber = (
-    track: DawTrack,
-    key: "start" | "trimStart" | "trimEnd",
-    value: number,
-  ) => {
-    if (!Number.isFinite(value)) return;
-    if (key === "start")
-      publish(track, {
+  const moveRegion = (track: DawTrack, region: DawRegion, start: number) =>
+    publishRegions(track, [
+      {
+        ...region,
         start: Math.max(
           0,
-          Math.min(MAX_DAW_SECONDS - (track.trimEnd - track.trimStart), value),
+          Math.min(MAX_DAW_SECONDS - region.trimEnd + region.trimStart, start),
         ),
-      });
-    if (key === "trimStart")
-      publish(track, {
-        trimStart: Math.max(0, Math.min(track.trimEnd - 0.01, value)),
-      });
-    if (key === "trimEnd")
-      publish(track, {
-        trimEnd: Math.min(
-          track.duration,
-          MAX_DAW_SECONDS - track.start + track.trimStart,
-          Math.max(track.trimStart + 0.01, value),
+      },
+    ]);
+  const deleteRegion = (track = selectedTrack, region = selectedRegion) => {
+    if (!track || !region || recording || busy) return;
+    publishRegions(track, [{ ...region, deleted: true }]);
+    setSelectedRegionId(null);
+  };
+  const duplicateRegion = (
+    track = selectedTrack,
+    region = selectedRegion,
+    at?: number,
+  ) => {
+    if (!track || !region || recording || busy) return;
+    const start = at ?? region.start + region.trimEnd - region.trimStart;
+    if (start + region.trimEnd - region.trimStart > MAX_DAW_SECONDS) return;
+    const copy = { ...region, id: crypto.randomUUID(), start, deleted: false };
+    publishRegions(track, [copy]);
+    setSelected(track.id);
+    setSelectedRegionId(copy.id);
+  };
+  const splitRegion = (track = selectedTrack, region = selectedRegion) => {
+    if (!track || !region || recording || busy) return;
+    const parts = splitDawRegion(
+      region,
+      currentPosition(),
+      crypto.randomUUID(),
+    );
+    if (parts) publishRegions(track, parts);
+  };
+  const menuTrack = active.find((t) => t.id === (menu?.trackId ?? selected));
+  const menuRegion =
+    menuTrack &&
+    visibleRegions(menuTrack).find(
+      (r) => r.id === (menu?.regionId ?? selectedRegionId),
+    );
+  const locked = busy || recording;
+  const importAudio = () => {
+    relinkRef.current = null;
+    inputRef.current?.click();
+  };
+  const trackItems: DawMenuItem[] = [
+    {
+      label: "New Audio Track",
+      shortcut: "⌥⌘N",
+      action: () => {
+        newTrack();
+      },
+      disabled: locked,
+    },
+    { label: "Import Audio…", action: importAudio, disabled: locked },
+    {
+      label: "Rename Track",
+      action: () => setRenaming(menuTrack!.id),
+      disabled: !menuTrack || locked,
+    },
+    {
+      label: "Duplicate Track Settings",
+      action: () => {
+        const t = newTrack(`${menuTrack!.name} copy`);
+        publish(t, {
+          volume: menuTrack!.volume,
+          pan: menuTrack!.pan,
+          muted: menuTrack!.muted,
+        });
+      },
+      disabled: !menuTrack || locked,
+    },
+    {
+      label: "Center Pan",
+      action: () => publish(menuTrack!, { pan: 0 }),
+      disabled: !menuTrack,
+    },
+    {
+      label: "Delete Track",
+      danger: true,
+      action: () => {
+        publish(menuTrack!, { deleted: true });
+        setSelected(null);
+        setSelectedRegionId(null);
+      },
+      disabled: !menuTrack || locked,
+    },
+  ];
+  const regionItems: DawMenuItem[] = [
+    {
+      label: "Copy Region",
+      shortcut: "⌘C",
+      action: () => {
+        clipboard.current = menuRegion!;
+      },
+      disabled: !menuRegion,
+    },
+    {
+      label: "Cut Region",
+      shortcut: "⌘X",
+      action: () => {
+        clipboard.current = menuRegion!;
+        deleteRegion(menuTrack, menuRegion);
+      },
+      disabled: !menuRegion || locked,
+    },
+    {
+      label: "Paste at Playhead",
+      shortcut: "⌘V",
+      action: () =>
+        duplicateRegion(
+          menuTrack,
+          clipboard.current ?? undefined,
+          currentPosition(),
         ),
-      });
-  };
-
-  const deleteSelected = () => {
-    if (!selectedTrack || recording || busy) return;
-    const index = active.findIndex((t) => t.id === selectedTrack.id);
-    publish(selectedTrack, { deleted: true });
-    setSelected(active[index + 1]?.id ?? active[index - 1]?.id ?? null);
-    rootRef.current?.focus({ preventScroll: true });
-  };
-  const duplicateSelected = () => {
-    if (!selectedTrack || recording || busy) return;
-    const id = crypto.randomUUID();
-    publish({
-      ...selectedTrack,
-      id,
-      name: `${selectedTrack.name} copy`.slice(0, 200),
-      start: Math.min(
-        MAX_DAW_SECONDS - (selectedTrack.trimEnd - selectedTrack.trimStart),
-        selectedTrack.start + selectedTrack.trimEnd - selectedTrack.trimStart,
-      ),
-    });
-    setSelected(id);
-    rootRef.current?.focus({ preventScroll: true });
-  };
+      disabled: !menuTrack || !clipboard.current || locked,
+    },
+    {
+      label: "Duplicate Region",
+      shortcut: "⌘D",
+      action: () => duplicateRegion(menuTrack, menuRegion),
+      disabled: !menuRegion || locked,
+    },
+    {
+      label: "Split at Playhead",
+      shortcut: "⌘T",
+      action: () => splitRegion(menuTrack, menuRegion),
+      disabled:
+        !menuRegion ||
+        locked ||
+        !splitDawRegion(menuRegion, currentPosition(), "preview"),
+    },
+    {
+      label: "Delete Region",
+      shortcut: "Delete",
+      danger: true,
+      action: () => deleteRegion(menuTrack, menuRegion),
+      disabled: !menuRegion || locked,
+    },
+  ];
+  const menuItems =
+    menu?.kind === "File"
+      ? [
+          { label: "Import Audio…", action: importAudio, disabled: locked },
+          {
+            label: "Export WAV…",
+            action: () => {
+              void exportMix();
+            },
+            disabled: !duration || missing || locked,
+          },
+        ]
+      : menu?.kind === "View"
+        ? [
+            {
+              label: "Zoom In",
+              action: () => setZoom((z) => Math.min(80, z + 5)),
+            },
+            {
+              label: "Zoom Out",
+              action: () => setZoom((z) => Math.max(5, z - 5)),
+            },
+            {
+              label: "Keyboard Shortcuts",
+              action: () => setShowShortcuts((v) => !v),
+            },
+          ]
+        : menu?.kind === "Track"
+          ? trackItems
+          : regionItems;
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (minimized) return;
     // Keep canvas pan/laser shortcuts out of this window, including text inputs.
@@ -630,10 +815,30 @@ export function DawWidget({
         restart();
         break;
       case "delete":
-        deleteSelected();
+        deleteRegion();
         break;
       case "duplicate":
-        duplicateSelected();
+        duplicateRegion();
+        break;
+      case "new-track":
+        if (!locked) newTrack();
+        break;
+      case "copy":
+        clipboard.current = selectedRegion ?? null;
+        break;
+      case "cut":
+        clipboard.current = selectedRegion ?? null;
+        deleteRegion();
+        break;
+      case "paste":
+        duplicateRegion(
+          selectedTrack,
+          clipboard.current ?? undefined,
+          currentPosition(),
+        );
+        break;
+      case "split":
+        splitRegion();
         break;
       case "mute":
         if (selectedTrack)
@@ -657,6 +862,7 @@ export function DawWidget({
                 ),
               );
         setSelected(active[next]?.id ?? null);
+        setSelectedRegionId(null);
         rootRef.current
           ?.querySelector<HTMLElement>(
             `[data-track-row="${CSS.escape(active[next]?.id ?? "")}"]`,
@@ -672,11 +878,11 @@ export function DawWidget({
         break;
       case "nudge-back":
       case "nudge-forward":
-        if (selectedTrack && !recording && !busy)
-          updateNumber(
+        if (selectedTrack && selectedRegion && !locked)
+          moveRegion(
             selectedTrack,
-            "start",
-            selectedTrack.start +
+            selectedRegion,
+            selectedRegion.start +
               (action === "nudge-back" ? -1 : 1) * (event.shiftKey ? 1 : 0.1),
           );
         break;
@@ -692,6 +898,7 @@ export function DawWidget({
       case "escape":
         setShowShortcuts(false);
         setSelected(null);
+        setSelectedRegionId(null);
         break;
     }
   };
@@ -774,6 +981,27 @@ export function DawWidget({
             void addFiles(Array.from(e.dataTransfer.files));
         }}
       >
+        <div
+          role="menubar"
+          aria-label="DAW menus"
+          className="flex shrink-0 gap-1 border-b border-zinc-800 bg-zinc-900/60 px-2 py-1"
+        >
+          {["File", "Edit", "Track", "View"].map((kind) => (
+            <button
+              key={kind}
+              data-native-keys
+              aria-haspopup="menu"
+              aria-expanded={menu?.kind === kind}
+              className="rounded px-3 py-1 text-xs hover:bg-zinc-700"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setMenu({ kind, x: rect.left, y: rect.bottom });
+              }}
+            >
+              {kind}
+            </button>
+          ))}
+        </div>
         <input
           ref={inputRef}
           type="file"
@@ -923,12 +1151,15 @@ export function DawWidget({
                 ["Space", "Play / pause; finish recording"],
                 ["R", "Record / finish take"],
                 ["Return", "Go to beginning"],
-                ["Delete / Backspace", "Delete selected track"],
+                ["Delete / Backspace", "Delete selected region"],
                 ["↑ / ↓", "Select previous / next track"],
                 ["← / →", "Seek 1s (Shift: 5s)"],
                 ["Alt + ← / →", "Nudge clip 0.1s (Shift: 1s)"],
                 ["M / S", "Mute / solo selected track"],
-                ["⌘ / Ctrl + D", "Duplicate selected track"],
+                ["⌘ / Ctrl + D", "Duplicate selected region"],
+                ["⌘ / Ctrl + T", "Split region at playhead"],
+                ["⌘ / Ctrl + C / X / V", "Copy / cut / paste region"],
+                ["⌥ + ⌘ / Ctrl + N", "New audio track"],
                 ["+ / −", "Zoom timeline"],
                 ["Esc", "Deselect / close shortcuts"],
                 ["Double-click name", "Rename track"],
@@ -974,13 +1205,14 @@ export function DawWidget({
               <p className="text-sm">Build a mix together</p>
               <p className="max-w-sm text-xs text-zinc-500">
                 Drop recordings here, add audio files, or record a take. Each
-                recording becomes a track everyone can edit.
+                track can hold multiple audio regions. Use Track → New Audio
+                Track to start.
               </p>
             </div>
           ) : (
-            <div style={{ width: timelineWidth + 190 }}>
+            <div style={{ width: timelineWidth + 230 }}>
               <div className="flex h-7 border-b border-zinc-800 text-[10px] text-zinc-500">
-                <div className="sticky left-0 z-20 w-[190px] shrink-0 bg-zinc-900 px-3 py-1">
+                <div className="sticky left-0 z-20 w-[230px] shrink-0 bg-zinc-900 px-3 py-1">
                   {active.length} tracks · {time(duration)}
                 </div>
                 <div
@@ -1018,13 +1250,30 @@ export function DawWidget({
                 <div
                   key={track.id}
                   data-track-row={track.id}
-                  onFocusCapture={() => setSelected(track.id)}
-                  onClick={() => setSelected(track.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelected(track.id);
+                    setSelectedRegionId(null);
+                    setMenu({
+                      kind: "Track",
+                      x: e.clientX,
+                      y: e.clientY,
+                      trackId: track.id,
+                    });
+                  }}
+                  onClick={() => {
+                    setSelected(track.id);
+                    setSelectedRegionId(null);
+                  }}
                   className={`flex h-24 border-b border-zinc-800 ${selected === track.id ? "bg-emerald-950/20" : "bg-zinc-950"}`}
                 >
                   <div
-                    className={`sticky left-0 z-20 flex w-[190px] shrink-0 flex-col gap-1 border-r border-zinc-800 p-2 ${selected === track.id ? "bg-emerald-950 ring-1 ring-inset ring-emerald-500/60" : "bg-zinc-900"}`}
-                    onClick={() => setSelected(track.id)}
+                    className={`sticky left-0 z-20 flex w-[230px] shrink-0 flex-col gap-1 border-r border-zinc-800 p-2 ${selected === track.id ? "bg-emerald-950 ring-1 ring-inset ring-emerald-500/60" : "bg-zinc-900"}`}
+                    onClick={() => {
+                      setSelected(track.id);
+                      setSelectedRegionId(null);
+                    }}
                   >
                     {renaming === track.id ? (
                       <input
@@ -1049,11 +1298,14 @@ export function DawWidget({
                       />
                     ) : (
                       <button
-                        className="flex w-full items-center gap-2 truncate text-left text-xs"
+                        className="flex w-[calc(100%-40px)] items-center gap-2 truncate text-left text-xs"
                         aria-label={`Select track ${track.name}`}
                         aria-pressed={selected === track.id}
                         title="Select track; double-click to rename"
-                        onClick={() => setSelected(track.id)}
+                        onClick={() => {
+                          setSelected(track.id);
+                          setSelectedRegionId(null);
+                        }}
                         onDoubleClick={() => setRenaming(track.id)}
                       >
                         <span className="text-[10px] text-zinc-500">
@@ -1064,7 +1316,7 @@ export function DawWidget({
                         </span>
                       </button>
                     )}
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 pr-10">
                       <button
                         className={`${button} ${track.muted ? "text-amber-300" : ""}`}
                         aria-pressed={track.muted}
@@ -1097,16 +1349,27 @@ export function DawWidget({
                         {Math.round(track.volume * 100)}%
                       </span>
                     </div>
-                    {!buffers.has(track.sourceId) && (
+                    <div className="absolute right-2 top-2">
+                      <DawPanDial
+                        name={track.name}
+                        value={track.pan}
+                        onChange={(pan) => publish(track, { pan })}
+                      />
+                    </div>
+                    {visibleRegions(track).some(
+                      (r) => !buffers.has(r.sourceId),
+                    ) && (
                       <button
-                        className="text-left text-[10px] text-amber-300 underline"
-                        disabled={busy || recording}
+                        className="text-left text-[10px] text-amber-300"
+                        disabled={locked}
                         onClick={() => {
-                          relinkRef.current = track;
+                          relinkRef.current = visibleRegions(track).find(
+                            (r) => !buffers.has(r.sourceId),
+                          )!;
                           inputRef.current?.click();
                         }}
                       >
-                        Audio missing — restore file
+                        Restore missing audio…
                       </button>
                     )}
                   </div>
@@ -1119,64 +1382,128 @@ export function DawWidget({
                       backgroundSize: `${(5 / timelineSeconds) * timelineWidth}px 100%`,
                     }}
                   >
-                    <button
-                      aria-label={`Move clip ${track.name}`}
-                      aria-pressed={selected === track.id}
-                      onFocus={() => setSelected(track.id)}
-                      className="absolute top-3 h-[70px] min-w-1 touch-none overflow-hidden rounded border text-left"
-                      style={{
-                        left: `${(track.start / timelineSeconds) * 100}%`,
-                        width: `${((track.trimEnd - track.trimStart) / timelineSeconds) * 100}%`,
-                        color: colours[index % colours.length],
-                        background: `${colours[index % colours.length]}20`,
-                        borderColor:
-                          selected === track.id
-                            ? "white"
-                            : colours[index % colours.length],
-                        opacity: track.muted ? 0.35 : 1,
-                      }}
-                      onPointerDown={(e) => {
-                        setSelected(track.id);
-                        e.currentTarget.setPointerCapture(e.pointerId);
-                        const lane =
-                          e.currentTarget.parentElement!.getBoundingClientRect();
-                        dragRef.current = {
-                          id: track.id,
-                          x: e.clientX,
-                          start: track.start,
-                          pixelsPerSecond: lane.width / timelineSeconds,
-                        };
-                      }}
-                      onPointerMove={(e) => {
-                        const drag = dragRef.current;
-                        if (drag?.id === track.id && e.buttons)
-                          updateNumber(
-                            track,
-                            "start",
-                            Math.round(
-                              (drag.start +
-                                (e.clientX - drag.x) / drag.pixelsPerSecond) *
-                                100,
-                            ) / 100,
-                          );
-                      }}
-                      onPointerUp={() => {
-                        dragRef.current = null;
-                      }}
-                      onPointerCancel={() => {
-                        dragRef.current = null;
-                      }}
-                    >
-                      <span className="absolute left-2 top-1 max-w-full truncate text-[10px]">
-                        {track.name}
-                      </span>
-                      <div className="h-full pt-4">
-                        <Waveform
-                          buffer={buffers.get(track.sourceId)}
-                          track={track}
+                    {visibleRegions(track).map((region) => (
+                      <div
+                        key={region.id}
+                        role="button"
+                        tabIndex={0}
+                        data-region-id={region.id}
+                        aria-label={`Region ${region.name}`}
+                        aria-pressed={selectedRegionId === region.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelected(track.id);
+                          setSelectedRegionId(region.id);
+                        }}
+                        onFocus={() => {
+                          setSelected(track.id);
+                          setSelectedRegionId(region.id);
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setSelected(track.id);
+                          setSelectedRegionId(region.id);
+                          setMenu({
+                            kind: "Region",
+                            x: e.clientX,
+                            y: e.clientY,
+                            trackId: track.id,
+                            regionId: region.id,
+                          });
+                        }}
+                        className="absolute top-3 h-[70px] min-w-1 touch-none overflow-hidden rounded border text-left outline-none focus:ring-1 focus:ring-white"
+                        style={{
+                          left: `${(region.start / timelineSeconds) * 100}%`,
+                          width: `${((region.trimEnd - region.trimStart) / timelineSeconds) * 100}%`,
+                          color: colours[index % colours.length],
+                          background: `${colours[index % colours.length]}20`,
+                          borderColor:
+                            selectedRegionId === region.id
+                              ? "white"
+                              : colours[index % colours.length],
+                          opacity: track.muted ? 0.35 : 1,
+                        }}
+                        onPointerDown={(e) => {
+                          if (e.button !== 0 || locked) return;
+                          e.stopPropagation();
+                          setSelected(track.id);
+                          setSelectedRegionId(region.id);
+                          e.currentTarget.setPointerCapture(e.pointerId);
+                          dragRef.current = {
+                            id: region.id,
+                            x: e.clientX,
+                            region,
+                            edge:
+                              (e.target as HTMLElement).dataset.edge ?? "move",
+                            pixelsPerSecond:
+                              e.currentTarget.parentElement!.getBoundingClientRect()
+                                .width / timelineSeconds,
+                          };
+                        }}
+                        onPointerMove={(e) => {
+                          const drag = dragRef.current;
+                          if (drag?.id !== region.id || !e.buttons) return;
+                          const delta =
+                            (e.clientX - drag.x) / drag.pixelsPerSecond;
+                          const r = drag.region;
+                          if (drag.edge === "left") {
+                            const d = Math.max(
+                              -r.start,
+                              -r.trimStart,
+                              Math.min(r.trimEnd - r.trimStart - 0.01, delta),
+                            );
+                            publishRegions(track, [
+                              {
+                                ...r,
+                                start: r.start + d,
+                                trimStart: r.trimStart + d,
+                              },
+                            ]);
+                          } else if (drag.edge === "right")
+                            publishRegions(track, [
+                              {
+                                ...r,
+                                trimEnd: Math.max(
+                                  r.trimStart + 0.01,
+                                  Math.min(
+                                    r.duration,
+                                    MAX_DAW_SECONDS - r.start + r.trimStart,
+                                    r.trimEnd + delta,
+                                  ),
+                                ),
+                              },
+                            ]);
+                          else moveRegion(track, r, r.start + delta);
+                        }}
+                        onPointerUp={() => {
+                          dragRef.current = null;
+                        }}
+                        onPointerCancel={() => {
+                          dragRef.current = null;
+                        }}
+                      >
+                        <span className="pointer-events-none absolute left-2 top-1 max-w-full truncate text-[10px]">
+                          {region.name}
+                        </span>
+                        <div className="pointer-events-none h-full pt-4">
+                          <Waveform
+                            buffer={buffers.get(region.sourceId)}
+                            track={region}
+                          />
+                        </div>
+                        <span
+                          data-edge="left"
+                          title="Trim region start"
+                          className="absolute inset-y-0 left-0 w-2 cursor-ew-resize hover:bg-white/30"
+                        />
+                        <span
+                          data-edge="right"
+                          title="Trim region end"
+                          className="absolute inset-y-0 right-0 w-2 cursor-ew-resize hover:bg-white/30"
                         />
                       </div>
-                    </button>
+                    ))}
                     <div
                       className="pointer-events-none absolute inset-y-0 w-px bg-white/70"
                       style={{ left: `${(playhead / timelineSeconds) * 100}%` }}
@@ -1187,62 +1514,6 @@ export function DawWidget({
             </div>
           )}
         </div>
-        {selectedTrack && (
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-zinc-800 p-2 text-[10px] text-zinc-400">
-            {(["start", "trimStart", "trimEnd"] as const).map((key, i) => (
-              <label key={key}>
-                {["Start (s)", "Trim in (s)", "Trim out (s)"][i]}{" "}
-                <input
-                  className={field}
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  value={Number(selectedTrack[key].toFixed(2))}
-                  onChange={(e) =>
-                    updateNumber(selectedTrack, key, +e.target.value)
-                  }
-                />
-              </label>
-            ))}
-            <label className="flex items-center gap-1">
-              Pan
-              <input
-                type="range"
-                aria-label="Track pan"
-                min="-1"
-                max="1"
-                step="0.05"
-                value={selectedTrack.pan}
-                onChange={(e) =>
-                  publish(selectedTrack, { pan: +e.target.value })
-                }
-                className="w-16 accent-emerald-400"
-              />
-            </label>
-            <button
-              className={button}
-              title="Duplicate selected track (⌘/Ctrl+D)"
-              onClick={duplicateSelected}
-              disabled={recording || busy}
-            >
-              Duplicate
-            </button>
-            <button
-              className={button}
-              onClick={() => setRenaming(selectedTrack.id)}
-            >
-              Rename
-            </button>
-            <button
-              className={`${button} text-red-300`}
-              title="Delete selected track (Delete / Backspace)"
-              onClick={deleteSelected}
-              disabled={recording || busy}
-            >
-              Delete track
-            </button>
-          </div>
-        )}
         <div className="shrink-0 border-t border-zinc-800 px-3 py-1.5 text-[10px] text-zinc-500">
           <span
             className={keyboardActive && !minimized ? "text-emerald-400" : ""}
@@ -1252,10 +1523,22 @@ export function DawWidget({
               : "Click this window to use keys"}
           </span>
           {
-            " · Space Play / pause · R Record · Return Start · Delete Track · ? Help"
+            " · Space Play / pause · R Record · Return Start · Delete Region · ? Help"
           }
         </div>
       </div>
+      {menu && (
+        <DawMenu
+          x={menu.x}
+          y={menu.y}
+          title={menu.kind}
+          items={menuItems}
+          onClose={(restore) => {
+            setMenu(null);
+            if (restore) rootRef.current?.focus({ preventScroll: true });
+          }}
+        />
+      )}
     </div>
   );
 }
