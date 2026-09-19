@@ -1,6 +1,7 @@
 import type { RoomSnapshot } from "./roomPersistence";
 import { ROOM_STATE_VERSION } from "./roomPersistence";
 
+// Stable file-format identifier: keep existing exported bundles compatible.
 const BUNDLE_FORMAT = "watchtogether-room";
 const BUNDLE_VERSION = 1;
 
@@ -100,7 +101,7 @@ export function parseRoomBundle(source: string): RoomSnapshot {
     throw new Error("That file is not valid JSON.");
   }
   if (!isObject(parsed) || parsed.format !== BUNDLE_FORMAT || parsed.version !== BUNDLE_VERSION) {
-    throw new Error("That is not a supported watchtogether room bundle.");
+    throw new Error("That is not a supported cometogether.dev room bundle.");
   }
   if (!isSnapshot(parsed.snapshot)) {
     throw new Error(`This bundle is damaged or uses an unsupported room-state version (expected ${ROOM_STATE_VERSION}).`);

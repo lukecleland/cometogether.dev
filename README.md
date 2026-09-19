@@ -1,4 +1,4 @@
-# watchtogether
+# cometogether.dev
 
 A live peer-to-peer workspace for video chat, shared media, drawing and music
 collaboration. Create a room, share its link and work together without an
@@ -282,3 +282,19 @@ src/
 | PeerJS / WebRTC | Signalling helpers, media and data channels |
 | YouTube IFrame API | Embedded video playback |
 | react-draggable | Panel movement |
+
+## Production domain and rebrand
+
+The production domain is `cometogether.dev`. Serve the `dist/` output over HTTPS
+and configure the hosting provider and DNS for this domain. Room invitation links
+use the current origin, so development and preview rooms keep working as well.
+
+When moving an existing deployment, configure the old host to redirect to
+`https://cometogether.dev` while preserving the path and query string (including
+`?room=...`). DNS, TLS and redirects are managed outside this repository.
+
+Browser-local rooms and media do not transfer between domains. Export room
+bundles on the old origin and import them on the new one; media files must be
+added again because bundles contain metadata, not media bytes. The legacy
+`watchtogether` storage, bundle-format and peer-message identifiers are retained
+for compatibility with existing data and clients.

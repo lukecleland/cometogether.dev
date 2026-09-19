@@ -123,6 +123,7 @@ interface UsePeerResult {
 }
 
 type RoomRole = "owner" | "joiner";
+// Keep the wire identifier compatible with clients running earlier releases.
 type MeshControl =
   | { __watchTogether: "media-capabilities"; canSendMedia: boolean }
   | { __watchTogether: "media-retry" }

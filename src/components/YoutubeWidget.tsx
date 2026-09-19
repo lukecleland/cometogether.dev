@@ -82,7 +82,7 @@ export function YoutubeWidget({
   initialPlayback,
   onPlaybackChange,
   onVideoChange,
-  title = "Watch Together",
+  title = "cometogether.dev",
 }: YoutubeWidgetProps) {
   const [hasVideo, setHasVideo] = useState(false);
   const [inputValue, setInputValue] = useState(() =>

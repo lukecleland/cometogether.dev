@@ -1,4 +1,4 @@
-# watchtogether — roadmap
+# cometogether.dev — roadmap
 
 Working document, not a commitment — the ordering is open and items get rewritten
 as we learn things from building them. Ticked items link to where they landed.

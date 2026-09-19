@@ -63,6 +63,8 @@ export interface RoomSnapshot {
   canvas: { x: number; y: number; scale: number };
 }
 
+// Keep legacy storage names so existing rooms and media survive the rebrand
+// when served from the same origin. Storage cannot move across domains.
 const roomKey = (roomCode: string) => `watchtogether:room:${roomCode}`;
 const mediaKey = (roomCode: string, panelId: string, recordingId?: string) =>
   `${roomCode}:${panelId}:${recordingId ?? "audio"}`;

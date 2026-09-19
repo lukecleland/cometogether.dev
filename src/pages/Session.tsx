@@ -2,7 +2,7 @@ import { acquireLocalMedia } from "../utils/localMedia";
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 /**
- * Session — the top-level coordinator for an active watchtogether session.
+ * Session — the top-level coordinator for an active cometogether.dev session.
  *
  * ## Responsibilities
  * - Acquires the local camera/mic stream via `getUserMedia`
@@ -1016,7 +1016,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		const url = URL.createObjectURL(blob);
 		const link = document.createElement('a');
 		link.href = url;
-		link.download = `watchtogether-${roomCode.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.json`;
+		link.download = `cometogether.dev-${roomCode.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.json`;
 		document.body.appendChild(link);
 		link.click();
 		link.remove();
@@ -2198,8 +2198,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 					paddingTop: 'env(safe-area-inset-top)',
 					paddingBottom: '0.5rem'
 				}}>
-				<div className="flex items-center gap-2 sm:gap-3 shrink-0 min-w-0">
-					<span className="text-white font-bold text-sm sm:text-base tracking-tight whitespace-nowrap">watchtogether</span>
+				<div className="flex items-center gap-2 sm:gap-3 min-w-0">
+					<span className="text-white font-bold text-sm sm:text-base tracking-tight truncate">cometogether.dev</span>
 					<span
 						className={`text-xs px-2 sm:px-2.5 py-0.5 rounded-full font-medium shrink-0 ${
 							status === 'connected' ? 'bg-emerald-500/20 text-emerald-400' : status === 'error' ? 'bg-red-500/20 text-red-400' : 'bg-zinc-700 text-zinc-400'
