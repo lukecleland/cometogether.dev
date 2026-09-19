@@ -845,6 +845,53 @@ export function DawWidget({
       disabled: !menuRegion || locked,
     },
   ];
+  const workspaceItems: DawMenuItem[] = [
+    {
+      label: "Add Track",
+      shortcut: "⌥⌘N",
+      action: () => {
+        newTrack();
+      },
+      disabled: locked,
+    },
+    { label: "Import Audio…", action: importAudio, disabled: locked },
+    {
+      label: "Paste at Playhead",
+      shortcut: "⌘V",
+      action: () => {
+        const region = clipboard.current;
+        if (!region) return;
+        duplicateRegion(selectedTrack ?? newTrack(), region, currentPosition());
+      },
+      disabled:
+        !clipboard.current ||
+        locked ||
+        !!(
+          clipboard.current &&
+          currentPosition() +
+            clipboard.current.trimEnd -
+            clipboard.current.trimStart >
+            MAX_DAW_SECONDS
+        ),
+    },
+    {
+      label: "Go to Beginning",
+      shortcut: "Return",
+      action: restart,
+      disabled: locked,
+    },
+    {
+      label: "Export WAV…",
+      action: () => {
+        void exportMix();
+      },
+      disabled: !duration || missing || locked,
+    },
+    {
+      label: "Keyboard Shortcuts",
+      action: () => setShowShortcuts((show) => !show),
+    },
+  ];
   const menuItems =
     menu?.kind === "File"
       ? [
@@ -874,7 +921,9 @@ export function DawWidget({
           ]
         : menu?.kind === "Track"
           ? trackItems
-          : regionItems;
+          : menu?.kind === "DAW"
+            ? workspaceItems
+            : regionItems;
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (minimized) return;
     // Keep canvas pan/laser shortcuts out of this window, including text inputs.
@@ -1077,7 +1126,6 @@ export function DawWidget({
       <div
         className="no-drag flex min-h-0 flex-1 flex-col"
         onPointerDown={(e) => e.stopPropagation()}
-        onWheel={(e) => e.stopPropagation()}
         onDragOver={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -1288,7 +1336,15 @@ export function DawWidget({
             {error}
           </p>
         )}
-        <div ref={timelineRef} className="min-h-0 flex-1 overflow-auto">
+        <div
+          ref={timelineRef}
+          className="min-h-0 flex-1 overflow-auto"
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setMenu({ kind: "DAW", x: event.clientX, y: event.clientY });
+          }}
+        >
           {!active.length ? (
             <div className="flex h-full min-h-32 flex-col items-center justify-center gap-2 px-5 text-center">
               <span className="text-3xl text-emerald-400">♫</span>
