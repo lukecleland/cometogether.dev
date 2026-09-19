@@ -1246,24 +1246,6 @@ export function DawWidget({
             {error}
           </p>
         )}
-        {recording && (
-          <p
-            role="status"
-            className="bg-red-950/40 px-3 py-2 text-xs text-red-300"
-          >
-            Recording microphone… Press R, Space or Stop to finish the take.
-          </p>
-        )}
-        {busy && (
-          <p role="status" className="px-3 py-1 text-xs text-emerald-300">
-            Preparing audio…
-          </p>
-        )}
-        {transferProgress !== undefined && (
-          <p role="status" className="px-3 py-1 text-xs text-emerald-300">
-            Sharing audio: {Math.round(transferProgress * 100)}%
-          </p>
-        )}
         <div ref={timelineRef} className="min-h-0 flex-1 overflow-auto">
           {!active.length ? (
             <div className="flex h-full min-h-32 flex-col items-center justify-center gap-2 px-5 text-center">
@@ -1276,7 +1258,7 @@ export function DawWidget({
               </p>
             </div>
           ) : (
-            <div style={{ width: timelineWidth + 230 }}>
+            <div className="relative" style={{ width: timelineWidth + 230 }}>
               <div className="flex h-7 border-b border-zinc-800 text-[10px] text-zinc-500">
                 <div className="sticky left-0 z-20 w-[230px] shrink-0 bg-zinc-900 px-3 py-1">
                   {active.length} tracks · {time(duration)}
@@ -1603,20 +1585,34 @@ export function DawWidget({
                         </svg>
                       </div>
                     )}
-                    <div
-                      data-playhead
-                      className={`pointer-events-none absolute inset-y-0 z-10 w-px ${recording ? "bg-red-300" : "bg-white/70"}`}
-                      style={{ left: `${(cursor / timelineSeconds) * 100}%` }}
-                    >
-                      <span className="absolute -left-1 top-0 h-2 w-2 rotate-45 bg-inherit" />
-                    </div>
                   </div>
                 </div>
               ))}
+              <div
+                data-playhead
+                className={`pointer-events-none absolute bottom-0 top-1 z-10 w-px ${recording ? "bg-red-300" : "bg-emerald-300"}`}
+                style={{
+                  left: 230 + (cursor / timelineSeconds) * timelineWidth,
+                }}
+              >
+                <span
+                  className="absolute -left-2 top-0 h-5 w-4 rounded-t bg-inherit"
+                  style={{
+                    clipPath: "polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%)",
+                  }}
+                />
+              </div>
             </div>
           )}
         </div>
         <div className="shrink-0 border-t border-zinc-800 px-3 py-1.5 text-[10px] text-zinc-500">
+          <span role="status" className="mr-2 text-emerald-300">
+            {busy
+              ? "Preparing audio…"
+              : transferProgress !== undefined
+                ? `Sharing audio: ${Math.round(transferProgress * 100)}%`
+                : ""}
+          </span>
           <span
             className={keyboardActive && !minimized ? "text-emerald-400" : ""}
           >
