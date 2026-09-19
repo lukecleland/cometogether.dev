@@ -1,3 +1,5 @@
+import { DawWidget } from "../components/DawWidget";
+import { mergeDawTrack } from "../utils/daw";
 import { acquireLocalMedia } from "../utils/localMedia";
 import { useState, useEffect, useCallback, useRef } from 'react';
 
@@ -217,6 +219,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		initialUrl: panel.initialUrl,
 		note: panel.note,
 		code: panel.code,
+		dawTracks: panel.dawTracks,
 		playback: panel.playback,
 		mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : undefined,
 		recordingMetadata: panel.recordings,
@@ -350,6 +353,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	const mediaHydratedRef = useRef(!savedRoom);
 	const mediaHydrationPromiseRef = useRef<Promise<void>>(Promise.resolve());
 	const pendingRoomRequestRef = useRef(false);
+	const roomSnapshotReceivedRef = useRef(false);
 	const ignoreLocalHydrationRef = useRef(false);
 
 	useEffect(() => {
@@ -367,7 +371,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				const file = await loadRoomMedia(roomCode, persisted.id);
 				if (!cancelled && !ignoreLocalHydrationRef.current && file) setDynamicPanels(prev => prev.map(panel => panel.id === persisted.id ? { ...panel, initialFile: file } : panel));
 			}
-			if (persisted.type === 'recorder' && persisted.recordings?.length) {
+			if ((persisted.type === 'recorder' || persisted.type === 'daw') && persisted.recordings?.length) {
 				const recordings = (await Promise.all(persisted.recordings.map(async recording => {
 					const file = await loadRoomMedia(roomCode, persisted.id, recording.id);
 					return file ? { id: recording.id, name: recording.name, file } : null;
@@ -401,6 +405,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				initialUrl: panel.initialUrl,
 				note: panel.note,
 				code: panel.code,
+				dawTracks: panel.dawTracks,
 				audioFileName: panel.type === 'audio' ? panel.initialFile?.name ?? panel.mediaFileName ?? savedRoom?.panels.find(saved => saved.id === panel.id)?.audioFileName : undefined,
 				imageFileName: panel.type === 'image' ? panel.initialFile?.name ?? panel.mediaFileName ?? savedRoom?.panels.find(saved => saved.id === panel.id)?.imageFileName : undefined,
 				recordings: recordingMetadataFor(panel) ?? savedRoom?.panels.find(saved => saved.id === panel.id)?.recordings,
@@ -539,6 +544,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			initialUrl: panel.initialUrl,
 			note: panel.note,
 			code: panel.code,
+			dawTracks: panel.dawTracks,
 			playback: panel.playback,
 			mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : undefined,
 			recordingMetadata: panel.recordings,
@@ -565,6 +571,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			initialUrl: panel.initialUrl,
 			note: panel.note,
 			code: panel.code,
+			dawTracks: panel.dawTracks,
 			playback: panel.playback,
 			mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : undefined,
 			recordingMetadata: panel.recordings,
@@ -600,7 +607,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				const file = await loadRoomMedia(roomCode, panel.id).catch(() => null);
 				if (file) setDynamicPanels(previous => previous.map(item => item.id === panel.id ? { ...item, initialFile: file } : item));
 			}
-			if (panel.type === 'recorder' && panel.recordings?.length) {
+			if ((panel.type === 'recorder' || panel.type === 'daw') && panel.recordings?.length) {
 				const recordings = (await Promise.all(panel.recordings.map(async recording => {
 					const file = await loadRoomMedia(roomCode, panel.id, recording.id).catch(() => null);
 					return file ? { id: recording.id, name: recording.name, file } : null;
@@ -661,7 +668,10 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			return;
 		}
 		if (msg.type === 'room-state-snapshot') {
-			if (!isHost) applyRoomSnapshot(msg.snapshot);
+			if (!isHost) {
+				roomSnapshotReceivedRef.current = true;
+				applyRoomSnapshot(msg.snapshot);
+			}
 			return;
 		}
 		if (msg.type === 'room-state-import') {
@@ -777,6 +787,10 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			setDynamicPanels(prev => [...prev, { id: msg.id, type: 'code', state: denormalisePanel(msg.state), code: msg.code }]);
 		} else if (msg.type === 'code-update') {
 			setDynamicPanels(prev => prev.map(p => (p.id === msg.id ? { ...p, code: msg.code } : p)));
+		} else if (msg.type === 'spawn-daw') {
+			setDynamicPanels(prev => prev.some(p => p.id === msg.id) ? prev : [...prev, { id: msg.id, type: 'daw', state: denormalisePanel(msg.state), dawTracks: [], recordings: [] }]);
+		} else if (msg.type === 'daw-track') {
+			setDynamicPanels(prev => prev.map(p => p.id === msg.id && p.type === 'daw' ? { ...p, dawTracks: mergeDawTrack(p.dawTracks, msg.track) } : p));
 		} else if (msg.type === 'spawn-recorder') {
 			setDynamicPanels(prev => [...prev, { id: msg.id, type: 'recorder', state: denormalisePanel(msg.state), recordings: [] }]);
 		} else if (msg.type === 'remove-panel') {
@@ -1175,7 +1189,16 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	}, [dynamicPanels, sendFileTo, sendSync]);
 
 	useEffect(() => {
-		if (!isHost && status === 'connected') sendSync({ type: 'room-state-request' });
+		if (isHost || status !== 'connected') return;
+		roomSnapshotReceivedRef.current = false;
+		// A data channel can open before the host's React listener is attached.
+		// Retry the initial handshake until the first snapshot arrives.
+		const request = () => {
+			if (!roomSnapshotReceivedRef.current) sendSync({ type: 'room-state-request' });
+		};
+		request();
+		const timer = setInterval(request, 1000);
+		return () => clearInterval(timer);
 	}, [isHost, sendSync, status]);
 
 	useEffect(() => {
@@ -1420,6 +1443,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			browser: 760,
 			code: 640,
 			recorder: 720,
+			daw: 900,
 			image: 680,
 			position: 0
 		};
@@ -1499,7 +1523,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			const firstLine = text.split('\n')[0].trim();
 			if (kind === 'text' && firstLine) return firstLine.slice(0, 40);
 		}
-		const base = panel.type === 'youtube' ? 'YouTube' : panel.type === 'note' ? 'Note' : panel.type === 'browser' ? 'Browser' : panel.type === 'code' ? 'Code' : panel.type === 'recorder' ? 'Recorder' : panel.type === 'image' ? 'Image' : 'Audio';
+		const base = panel.type === 'daw' ? 'Mini DAW' : panel.type === 'youtube' ? 'YouTube' : panel.type === 'note' ? 'Note' : panel.type === 'browser' ? 'Browser' : panel.type === 'code' ? 'Code' : panel.type === 'recorder' ? 'Recorder' : panel.type === 'image' ? 'Image' : 'Audio';
 		const sameType = dynamicPanels.filter(p => p.type === panel.type);
 		if (sameType.length < 2) return base;
 		return `${base} ${sameType.findIndex(p => p.id === panel.id) + 1}`;
@@ -1680,7 +1704,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	// Spawn a new dynamic panel at the given screen position (screen coords → world coords).
 	// Pass fromRemote=true when applying a remote-initiated spawn (skips sync to avoid loops).
 	const spawnPanel = (
-		type: 'youtube' | 'audio' | 'browser' | 'note' | 'code' | 'recorder' | 'image',
+		type: 'youtube' | 'audio' | 'browser' | 'note' | 'code' | 'recorder' | 'image' | 'daw',
 		screenX: number,
 		screenY: number,
 		extra?: { initialVideoId?: string; initialFile?: File; initialUrl?: string; note?: NoteContent; code?: CodeContent; dimensions?: { width: number; height: number } },
@@ -1690,8 +1714,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		const imageRatio = extra?.dimensions ? extra.dimensions.width / extra.dimensions.height : 4 / 3;
 		const imageWidth = imageRatio >= 1 ? 520 : Math.max(240, 420 * imageRatio);
 		const imageHeight = (imageRatio >= 1 ? Math.max(180, 520 / imageRatio) : 420) + 32;
-		const w = type === 'image' ? imageWidth : type === 'browser' ? 560 : type === 'recorder' ? 600 : type === 'code' ? 520 : type === 'youtube' ? 320 : type === 'note' ? 300 : 300;
-		const h = type === 'image' ? imageHeight : type === 'browser' ? 420 : type === 'recorder' ? 480 : type === 'code' ? 380 : type === 'youtube' ? 260 : type === 'note' ? 300 : 360;
+		const w = type === 'daw' ? 900 : type === 'image' ? imageWidth : type === 'browser' ? 560 : type === 'recorder' ? 600 : type === 'code' ? 520 : type === 'youtube' ? 320 : type === 'note' ? 300 : 300;
+		const h = type === 'daw' ? 480 : type === 'image' ? imageHeight : type === 'browser' ? 420 : type === 'recorder' ? 480 : type === 'code' ? 380 : type === 'youtube' ? 260 : type === 'note' ? 300 : 360;
 		const worldX = (screenX - tx) / scale - w / 2;
 		const worldY = (screenY - ty) / scale - h / 2;
 		const nextZ = ++topZRef.current;
@@ -1724,6 +1748,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				sendSync({ type: 'spawn-note', id, state: normalisePanel(state), note: extra?.note ?? defaultNoteContent() });
 			} else if (type === 'code') {
 				sendSync({ type: 'spawn-code', id, state: normalisePanel(state), code: extra?.code ?? { text: '', language: 'text' } });
+			} else if (type === 'daw') {
+				sendSync({ type: 'spawn-daw', id, state: normalisePanel(state) });
 			} else if (type === 'recorder') {
 				sendSync({ type: 'spawn-recorder', id, state: normalisePanel(state) });
 			} else if (type === 'image') {
@@ -2292,6 +2318,12 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						<span>YouTube</span>
 					</button>
 					<button
+						onClick={() => spawnPanel('daw', window.innerWidth / 2, window.innerHeight / 2)}
+						className="flex w-full items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-emerald-300 text-xs font-medium px-3 py-2 rounded-lg"
+						title="Add a shared multitrack DAW">
+						<span aria-hidden="true">♫</span><span>Mini DAW</span>
+					</button>
+					<button
 						onClick={() => spawnPanel('audio', window.innerWidth / 2, window.innerHeight / 2)}
 						className="flex w-full items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 border border-zinc-700 text-zinc-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors"
 						title="Add an audio player">
@@ -2366,6 +2398,14 @@ export function Session({ roomCode, isHost }: SessionProps) {
 								}}
 								className="w-full text-left px-2.5 py-2 text-xs text-zinc-200 rounded-lg hover:bg-zinc-800 transition-colors">
 								Audio
+							</button>
+							<button
+								onClick={() => {
+									spawnPanel('daw', window.innerWidth / 2, window.innerHeight / 2);
+									setWidgetMenuOpen(false);
+								}}
+								className="w-full text-left px-2.5 py-2 text-xs text-emerald-300 rounded-lg hover:bg-zinc-800 transition-colors">
+								Mini DAW
 							</button>
 							<button
 								onClick={() => {
@@ -2728,13 +2768,13 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						panelId={panel.id}
 						minimized={minimizedIds.includes(panel.id)}
 						onMinimize={() => minimizePanel(panel.id)}
-						minimizeControlHandled={panel.type === 'youtube' || panel.type === 'code'}
+						minimizeControlHandled={panel.type === 'youtube' || panel.type === 'code' || panel.type === 'daw'}
 						state={panel.state}
 						excludeFromRecording={panel.type === 'recorder'}
 						{...makeDynamicPanelHandlers(panel.id)}
 						onToggleDock={() => toggleDock(panel.id)}
-						minWidth={panel.type === 'browser' ? 360 : panel.type === 'recorder' ? 420 : panel.type === 'code' ? 380 : panel.type === 'youtube' ? 280 : panel.type === 'image' ? 180 : 260}
-						minHeight={panel.type === 'browser' ? 240 : panel.type === 'audio' ? 300 : panel.type === 'image' ? 140 : 60}
+						minWidth={panel.type === 'daw' ? 520 : panel.type === 'browser' ? 360 : panel.type === 'recorder' ? 420 : panel.type === 'code' ? 380 : panel.type === 'youtube' ? 280 : panel.type === 'image' ? 180 : 260}
+						minHeight={panel.type === 'daw' ? 320 : panel.type === 'browser' ? 240 : panel.type === 'audio' ? 300 : panel.type === 'image' ? 140 : 60}
 						scale={canvas.scale}>
 						{zoomTagHandle(panel.id, panelLabels[panel.id] ?? fallbackLabel(panel))}
 						{panel.type === 'note' ? (
@@ -2771,6 +2811,24 @@ export function Session({ roomCode, isHost }: SessionProps) {
 								docked={dockedIds.includes(panel.id)}
 								onToggleDock={() => toggleDock(panel.id)}
 								onTitleChange={title => setPanelLabels(prev => ({ ...prev, [panel.id]: title }))}
+							/>
+						) : panel.type === 'daw' ? (
+							<DawWidget
+								title={customLabels[panel.id] ?? fallbackLabel(panel)}
+								tracks={panel.dawTracks ?? []}
+								recordings={panel.recordings ?? []}
+								onTrack={track => {
+									setDynamicPanels(prev => prev.map(p => p.id === panel.id ? { ...p, dawTracks: mergeDawTrack(p.dawTracks, track) } : p));
+									sendSync({ type: 'daw-track', id: panel.id, track });
+								}}
+								onFile={recording => {
+									setDynamicPanels(prev => prev.map(p => p.id === panel.id ? { ...p, recordings: [...(p.recordings ?? []).filter(r => r.id !== recording.id), recording] } : p));
+									sendFileTo(panel.id, recording.file, recording.id);
+								}}
+								transferProgress={transferProgress[panel.id]}
+								onClose={() => removePanel(panel.id)}
+								onMinimize={() => minimizePanel(panel.id)}
+								onToggleDock={() => toggleDock(panel.id)}
 							/>
 						) : panel.type === 'recorder' ? (
 							<ScreenRecorderWidget

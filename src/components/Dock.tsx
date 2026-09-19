@@ -35,7 +35,7 @@ import { useEffect, useRef, useState } from "react";
 
 export interface DockEntry {
   id: string;
-  type: "local" | "remote" | "youtube" | "audio" | "browser" | "position" | "note" | "code" | "recorder" | "image";
+  type: "local" | "remote" | "youtube" | "audio" | "browser" | "position" | "note" | "code" | "recorder" | "image" | "daw";
   label: string;
   /** True when the label is a user-set name rather than a derived one. */
   renamed?: boolean;
@@ -62,6 +62,7 @@ interface DockProps {
 }
 
 function DockIcon({ type }: { type: DockEntry["type"] }) {
+  if (type === "daw") return <span className="text-emerald-400" aria-hidden="true">♫</span>;
   if (type === "image") {
     return (
       <svg className="h-4 w-4 shrink-0 text-fuchsia-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>

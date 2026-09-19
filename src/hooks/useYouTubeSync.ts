@@ -1,3 +1,4 @@
+import type { DawTrack } from "../utils/daw";
 import { useCallback, useEffect, useEffectEvent } from 'react';
 import type { RoomDataConnection } from './usePeer';
 import type { CodeContent, NoteContent, PanelState } from '../types/panels';
@@ -97,6 +98,8 @@ export type SyncMessage =
 	| { type: 'note-update'; id: string; note: NoteContent }
 	| { type: 'spawn-code'; id: string; state: PanelState; code: CodeContent }
 	| { type: 'code-update'; id: string; code: CodeContent }
+	| { type: 'spawn-daw'; id: string; state: PanelState }
+	| { type: 'daw-track'; id: string; track: DawTrack }
 	| { type: 'spawn-recorder'; id: string; state: PanelState }
 	| { type: 'recording-select'; id: string; recordingId: string }
 	| { type: 'recording-play'; id: string; recordingId: string; time: number; at?: number }
