@@ -116,6 +116,16 @@ export function DawWidget({
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [liveTake, setLiveTake] = useState<{
+    trackId: string;
+    start: number;
+  } | null>(null);
+  const [livePeaks, setLivePeaks] = useState<{ at: number; peak: number }[]>(
+    [],
+  );
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const microphoneSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const timelineRef = useRef<HTMLDivElement>(null);
   const recordingStartedRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const relinkRef = useRef<DawRegion | null>(null);
@@ -140,7 +150,13 @@ export function DawWidget({
     selectedTrack &&
     visibleRegions(selectedTrack).find((r) => r.id === selectedRegionId);
   const duration = dawEnd(tracks);
-  const timelineSeconds = Math.max(30, duration + 5);
+  const cursor =
+    recording && liveTake ? liveTake.start + recordingSeconds : playhead;
+  const timelineSeconds = Math.max(
+    30,
+    duration + 5,
+    Math.ceil((cursor + 5) / 30) * 30,
+  );
   const timelineWidth = Math.max(500, timelineSeconds * zoom);
   const missing = audibleTracks(tracks).some((t) =>
     visibleRegions(t).some((r) => !buffers.has(r.sourceId)),
@@ -191,6 +207,8 @@ export function DawWidget({
       if (recordTimerRef.current) clearTimeout(recordTimerRef.current);
       if (recorderRef.current?.state === "recording")
         recorderRef.current.stop();
+      microphoneSourceRef.current?.disconnect();
+      analyserRef.current?.disconnect();
       micRef.current?.getTracks().forEach((track) => track.stop());
       void contextRef.current?.close();
       contextRef.current = null;
@@ -289,13 +307,28 @@ export function DawWidget({
 
   useEffect(() => {
     if (!recording) return;
+    const samples = new Float32Array(analyserRef.current?.fftSize ?? 2048);
     const timer = setInterval(() => {
-      setRecordingSeconds(
-        (performance.now() - recordingStartedRef.current) / 1000,
-      );
+      const elapsed = (performance.now() - recordingStartedRef.current) / 1000;
+      setRecordingSeconds(elapsed);
+      analyserRef.current?.getFloatTimeDomainData(samples);
+      let peak = 0;
+      for (const sample of samples) peak = Math.max(peak, Math.abs(sample));
+      setLivePeaks((points) => [...points, { at: elapsed, peak }]);
     }, 50);
     return () => clearInterval(timer);
   }, [recording]);
+
+  useEffect(() => {
+    if (!recording || !liveTake || !timelineRef.current) return;
+    const node = timelineRef.current;
+    const x = 230 + (cursor / timelineSeconds) * timelineWidth;
+    if (
+      x > node.scrollLeft + node.clientWidth - 40 ||
+      x < node.scrollLeft + 230
+    )
+      node.scrollLeft = Math.max(0, x - node.clientWidth + 80);
+  }, [recording, liveTake, cursor, timelineSeconds, timelineWidth]);
 
   const revision = () => {
     revisionRef.current =
@@ -503,6 +536,28 @@ export function DawWidget({
         return;
       }
       micRef.current = stream;
+      const ctx = context();
+      await ctx.resume();
+      if (!aliveRef.current || request !== transportRequestRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      const target = selected
+        ? tracksRef.current.find((t) => t.id === selected && !t.deleted)
+        : newTrack();
+      if (!target)
+        throw new Error(
+          "The selected track was removed. Select another track to record.",
+        );
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048;
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+      microphoneSourceRef.current = source;
+      analyserRef.current = analyser;
+      setLiveTake({ trackId: target.id, start });
+      setLivePeaks([]);
+      setSelected(target.id);
       const recorder = new MediaRecorder(stream);
       recorderRef.current = recorder;
       const chunks: Blob[] = [];
@@ -522,9 +577,17 @@ export function DawWidget({
       recorder.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
         micRef.current = null;
+        source.disconnect();
+        analyser.disconnect();
+        analyserRef.current = null;
+        microphoneSourceRef.current = null;
         if (recordTimerRef.current) clearTimeout(recordTimerRef.current);
         if (!aliveRef.current) return;
         setRecording(false);
+        setPlayhead(
+          start + (performance.now() - recordingStartedRef.current) / 1000,
+        );
+        setLiveTake(null);
         const type = recorder.mimeType || chunks[0]?.type || "audio/webm";
         const extension = type.includes("mp4")
           ? "m4a"
@@ -536,7 +599,7 @@ export function DawWidget({
           `Take ${new Date().toLocaleTimeString().replaceAll(":", "-")}.${extension}`,
           { type },
         );
-        void addFiles([file], null, start);
+        void addFiles([file], null, start, target.id);
       };
       recorder.start(1000);
       recordingStartedRef.current = performance.now();
@@ -549,6 +612,9 @@ export function DawWidget({
         Math.max(1000, (MAX_DAW_SECONDS - start - 1) * 1000),
       );
     } catch (cause) {
+      microphoneSourceRef.current?.disconnect();
+      analyserRef.current?.disconnect();
+      setLiveTake(null);
       micRef.current?.getTracks().forEach((t) => t.stop());
       setError(
         cause instanceof Error
@@ -1198,7 +1264,7 @@ export function DawWidget({
             Sharing audio: {Math.round(transferProgress * 100)}%
           </p>
         )}
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div ref={timelineRef} className="min-h-0 flex-1 overflow-auto">
           {!active.length ? (
             <div className="flex h-full min-h-32 flex-col items-center justify-center gap-2 px-5 text-center">
               <span className="text-3xl text-emerald-400">♫</span>
@@ -1269,7 +1335,7 @@ export function DawWidget({
                   className={`flex h-24 border-b border-zinc-800 ${selected === track.id ? "bg-emerald-950/20" : "bg-zinc-950"}`}
                 >
                   <div
-                    className={`sticky left-0 z-20 flex w-[230px] shrink-0 flex-col gap-1 border-r border-zinc-800 p-2 ${selected === track.id ? "bg-emerald-950 ring-1 ring-inset ring-emerald-500/60" : "bg-zinc-900"}`}
+                    className={`sticky left-0 z-20 flex w-[230px] shrink-0 flex-col justify-center gap-2 border-r border-zinc-800 px-2 py-1 ${selected === track.id ? "bg-emerald-950 ring-1 ring-inset ring-emerald-500/60" : "bg-zinc-900"}`}
                     onClick={() => {
                       setSelected(track.id);
                       setSelectedRegionId(null);
@@ -1298,7 +1364,7 @@ export function DawWidget({
                       />
                     ) : (
                       <button
-                        className="flex w-[calc(100%-40px)] items-center gap-2 truncate text-left text-xs"
+                        className="flex h-5 w-full items-center gap-2 truncate text-left text-xs"
                         aria-label={`Select track ${track.name}`}
                         aria-pressed={selected === track.id}
                         title="Select track; double-click to rename"
@@ -1316,7 +1382,7 @@ export function DawWidget({
                         </span>
                       </button>
                     )}
-                    <div className="flex items-center gap-1 pr-10">
+                    <div className="flex h-10 items-center gap-1.5">
                       <button
                         className={`${button} ${track.muted ? "text-amber-300" : ""}`}
                         aria-pressed={track.muted}
@@ -1345,11 +1411,6 @@ export function DawWidget({
                         }
                         className="min-w-0 flex-1 accent-emerald-400"
                       />
-                      <span className="text-[10px]">
-                        {Math.round(track.volume * 100)}%
-                      </span>
-                    </div>
-                    <div className="absolute right-2 top-2">
                       <DawPanDial
                         name={track.name}
                         value={track.pan}
@@ -1412,7 +1473,7 @@ export function DawWidget({
                             regionId: region.id,
                           });
                         }}
-                        className="absolute top-3 h-[70px] min-w-1 touch-none overflow-hidden rounded border text-left outline-none focus:ring-1 focus:ring-white"
+                        className="absolute top-1 bottom-1 min-w-1 touch-none overflow-hidden rounded border text-left outline-none focus:ring-1 focus:ring-white"
                         style={{
                           left: `${(region.start / timelineSeconds) * 100}%`,
                           width: `${((region.trimEnd - region.trimStart) / timelineSeconds) * 100}%`,
@@ -1483,10 +1544,10 @@ export function DawWidget({
                           dragRef.current = null;
                         }}
                       >
-                        <span className="pointer-events-none absolute left-2 top-1 max-w-full truncate text-[10px]">
+                        <span className="pointer-events-none absolute inset-x-0 top-0 h-6 truncate border-b border-current/20 bg-current/10 px-2 py-1 text-[10px]">
                           {region.name}
                         </span>
-                        <div className="pointer-events-none h-full pt-4">
+                        <div className="pointer-events-none h-full pt-6">
                           <Waveform
                             buffer={buffers.get(region.sourceId)}
                             track={region}
@@ -1504,10 +1565,51 @@ export function DawWidget({
                         />
                       </div>
                     ))}
+                    {recording && liveTake?.trackId === track.id && (
+                      <div
+                        data-live-recording
+                        aria-label="Live recording waveform"
+                        className="pointer-events-none absolute inset-y-1 z-10 min-w-1 overflow-hidden rounded border border-red-300 bg-red-950/90 text-red-300"
+                        style={{
+                          left: `${(liveTake.start / timelineSeconds) * 100}%`,
+                          width: `${(recordingSeconds / timelineSeconds) * 100}%`,
+                        }}
+                      >
+                        <div className="absolute inset-x-0 top-0 h-6 whitespace-nowrap border-b border-red-400/30 bg-red-500/20 px-2 py-1 text-[10px]">
+                          ● Recording
+                        </div>
+                        <svg
+                          className="absolute bottom-0 top-6 h-[calc(100%-1.5rem)] w-full"
+                          viewBox={`0 0 ${Math.max(1, recordingSeconds * 20)} 50`}
+                          preserveAspectRatio="none"
+                          aria-hidden="true"
+                        >
+                          <path
+                            d={`M0 25H${recordingSeconds * 20}`}
+                            stroke="currentColor"
+                            strokeOpacity=".3"
+                          />
+                          <path
+                            data-live-peaks
+                            d={livePeaks
+                              .map(
+                                (p) =>
+                                  `M${p.at * 20} ${25 - p.peak * 23}v${Math.max(0.4, p.peak * 46)}`,
+                              )
+                              .join(" ")}
+                            stroke="currentColor"
+                            strokeWidth=".7"
+                          />
+                        </svg>
+                      </div>
+                    )}
                     <div
-                      className="pointer-events-none absolute inset-y-0 w-px bg-white/70"
-                      style={{ left: `${(playhead / timelineSeconds) * 100}%` }}
-                    />
+                      data-playhead
+                      className={`pointer-events-none absolute inset-y-0 z-10 w-px ${recording ? "bg-red-300" : "bg-white/70"}`}
+                      style={{ left: `${(cursor / timelineSeconds) * 100}%` }}
+                    >
+                      <span className="absolute -left-1 top-0 h-2 w-2 rotate-45 bg-inherit" />
+                    </div>
                   </div>
                 </div>
               ))}
