@@ -17,7 +17,7 @@ export function DawPanDial({
       ? "Center"
       : `${Math.round(Math.abs(value) * 100)}% ${value < 0 ? "left" : "right"}`;
   return (
-    <div className="flex shrink-0 flex-col items-center gap-0.5">
+    <div className="relative flex shrink-0 flex-col items-center">
       <div
         role="slider"
         tabIndex={0}
@@ -84,7 +84,7 @@ export function DawPanDial({
           <span className="absolute left-1/2 top-0 h-2.5 w-0.5 -translate-x-1/2 rounded bg-emerald-300" />
         </div>
       </div>
-      <span className="text-[9px] tabular-nums text-zinc-400">
+      <span className="absolute top-full mt-0.5 whitespace-nowrap text-[9px] tabular-nums text-zinc-400">
         {value === 0
           ? "C"
           : `${value < 0 ? "L" : "R"} ${Math.round(Math.abs(value) * 100)}`}
