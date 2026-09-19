@@ -2225,7 +2225,10 @@ export function Session({ roomCode, isHost }: SessionProps) {
 					paddingBottom: '0.5rem'
 				}}>
 				<div className="flex items-center gap-2 sm:gap-3 min-w-0">
-					<span className="text-white font-bold text-sm sm:text-base tracking-tight truncate">cometogether.dev</span>
+					<div className="flex min-w-0 items-baseline gap-1.5">
+						<span className="text-white font-bold text-sm sm:text-base tracking-tight truncate">cometogether.dev</span>
+						<span className="shrink-0 text-[9px] font-normal tabular-nums text-zinc-500" aria-label={`Version ${__APP_VERSION__}`} title={`Version ${__APP_VERSION__}`}>v{__APP_VERSION__}</span>
+					</div>
 					<span
 						className={`text-xs px-2 sm:px-2.5 py-0.5 rounded-full font-medium shrink-0 ${
 							status === 'connected' ? 'bg-emerald-500/20 text-emerald-400' : status === 'error' ? 'bg-red-500/20 text-red-400' : 'bg-zinc-700 text-zinc-400'

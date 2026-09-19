@@ -363,3 +363,13 @@ DAW shortcuts. Open **?** for the in-window reference.
 
 Track edits remain shared; selection, focus, playback and the recording
 transport are local to each participant. Recordings use the selected track, or create one if none is selected.
+
+## Versioning
+
+The tiny version beside the session title comes from `package.json`, injected at
+build time. The initial development release is `0.1.0`. Use semantic versioning
+(`MAJOR.MINOR.PATCH`): patch for fixes, minor for compatible features, and major
+for breaking changes once stable at `1.0.0`. During `0.x` development, use minor
+bumps for breaking changes. Bump the version once per release with
+`npm version patch --no-git-tag-version` (or `minor` / `major`), and commit both
+`package.json` and `package-lock.json`. Rebuild to display the new version.
