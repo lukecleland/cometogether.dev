@@ -1,6 +1,6 @@
 {
-  "name": "watchtogether",
-  "short_name": "watchtogether",
+  "name": "cometogether.dev",
+  "short_name": "cometogether.dev",
   "description": "Video call and a shared infinite canvas — watch, draw and jam together.",
   "start_url": "/",
   "scope": "/",

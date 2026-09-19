@@ -574,7 +574,7 @@ export function AudioPlayer({
                         letterSpacing="1.4"
                       >
                         <textPath href={`#labelarc-${id}`} startOffset="25%" textAnchor="middle">
-                          WATCH TOGETHER · LONG PLAY · 33⅓ RPM
+                          COMETOGETHER.DEV · LONG PLAY · 33⅓ RPM
                         </textPath>
                       </text>
                       {/* Spindle */}

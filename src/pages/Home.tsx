@@ -47,10 +47,10 @@ export function Home({ onStart }: HomeProps) {
             </svg>
           </div>
           <h1 className="text-3xl font-bold text-white tracking-tight">
-            watchtogether
+            cometogether.dev
           </h1>
           <p className="text-zinc-400 mt-2 text-sm">
-            Video call + sync YouTube. No login required.
+            Video chat, share a canvas and create together. No login required.
           </p>
         </div>
 

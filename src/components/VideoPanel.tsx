@@ -31,42 +31,41 @@ export function VideoPanel({
 }: VideoPanelProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // iOS Safari refuses to autoplay unmuted video without a user gesture.
-  // We start every video element muted (the HTML attribute) so autoplay
-  // works, then let the user tap an overlay to unlock audio for remote streams.
-  // NOTE: we control video.muted via DOM ref — not JSX prop — because React
-  // does not reliably update the muted boolean attribute after mount.
-  const [audioUnlocked, setAudioUnlocked] = useState(false);
-
-  // `muted` prop being true means "this is always muted" (local / self view).
-  // `muted` prop being false means "should play audio" (remote peer).
-  const wantsAudio = !muted;
-  const showUnlockOverlay = wantsAudio && !audioUnlocked && !!stream;
+  const [playbackBlocked, setPlaybackBlocked] = useState(false);
+  const showUnlockOverlay = playbackBlocked && !!stream;
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || !stream) return;
+    let active = true;
     video.srcObject = stream;
-    // Always start muted so iOS autoplay policy allows the video to play.
-    // Audio is unlocked separately via user gesture (see unlockAudio below).
-    video.muted = true;
-    queueMicrotask(() => setAudioUnlocked(false));
-    if (stream) {
-      // Explicit play() call — iOS sometimes ignores the autoPlay HTML attribute.
-      video.play().catch(() => {
-        // Blocked even while muted — extremely restrictive environment.
-        // The user can still tap the overlay to start playback.
-      });
-    }
-  }, [stream]);
+    video.muted = muted;
+    // Try audible playback first; only require a gesture when the browser does.
+    void video.play().then(() => {
+      if (active) setPlaybackBlocked(false);
+    }).catch(() => {
+      if (!active) return;
+      setPlaybackBlocked(true);
+      video.muted = true;
+      void video.play().catch(() => {});
+    });
+    return () => {
+      active = false;
+      video.pause();
+      video.srcObject = null;
+    };
+  }, [stream, muted]);
 
   const unlockAudio = () => {
     const video = videoRef.current;
     if (!video) return;
-    // This runs inside a user-gesture callstack so iOS allows unmuting.
-    video.muted = false;
-    video.play().catch(() => {});
-    setAudioUnlocked(true);
+    video.muted = muted;
+    void video.play().then(() => {
+      setPlaybackBlocked(false);
+    }).catch(() => {
+      // Keep the retry control visible if playback is still blocked.
+      setPlaybackBlocked(true);
+    });
   };
 
   return (
@@ -123,7 +122,7 @@ export function VideoPanel({
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-zinc-950/90 text-xs font-medium text-zinc-400">Camera off</div>
             )}
 
-            {/* iOS audio-unlock overlay — shown for remote streams until tapped */}
+            {/* Keep a gesture-based retry available whenever playback is blocked. */}
             {showUnlockOverlay && (
               <button
                 onClick={unlockAudio}
@@ -150,7 +149,7 @@ export function VideoPanel({
                   />
                 </svg>
                 <span className="text-xs font-medium opacity-90">
-                  Tap to hear
+                  {muted ? "Tap to play" : "Tap to hear"}
                 </span>
               </button>
             )}
