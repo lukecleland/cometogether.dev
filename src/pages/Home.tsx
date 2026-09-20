@@ -46,8 +46,16 @@ export function Home({ onStart }: HomeProps) {
               />
             </svg>
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">
-            cometogether.dev
+          <h1 className="landing-brand font-bold text-white tracking-tight">
+            <span className="sr-only">maketogether.dev</span>
+            <span aria-hidden="true" className="inline-flex items-baseline">
+              <span className="brand-words text-violet-400">
+                {["make", "watch", "create", "record", "jam", "chat", "learn"].map((word, index) => (
+                  <span key={word} className="brand-word" style={{ animationDelay: `${index * 2.6 - 0.4}s` }}>{word}</span>
+                ))}
+              </span>
+              <span>together.dev</span>
+            </span>
           </h1>
           <p className="text-zinc-400 mt-2 text-sm">
             Video chat, share a canvas and create together. No login required.

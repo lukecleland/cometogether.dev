@@ -652,7 +652,7 @@ export function DawWidget({
       const url = URL.createObjectURL(encodeWav(mixed));
       const link = document.createElement("a");
       link.href = url;
-      link.download = "cometogether-mix.wav";
+      link.download = "maketogether-mix.wav";
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {

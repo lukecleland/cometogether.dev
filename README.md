@@ -1,4 +1,4 @@
-# cometogether.dev
+# maketogether.dev
 
 A live peer-to-peer workspace for video chat, shared media, drawing and music
 collaboration. Create a room, share its link and work together without an
@@ -289,12 +289,12 @@ src/
 
 ## Production domain and rebrand
 
-The production domain is `cometogether.dev`. Serve the `dist/` output over HTTPS
+The production domain is `maketogether.dev`. Serve the `dist/` output over HTTPS
 and configure the hosting provider and DNS for this domain. Room invitation links
 use the current origin, so development and preview rooms keep working as well.
 
 When moving an existing deployment, configure the old host to redirect to
-`https://cometogether.dev` while preserving the path and query string (including
+`https://maketogether.dev` while preserving the path and query string (including
 `?room=...`). DNS, TLS and redirects are managed outside this repository.
 
 Browser-local rooms and media do not transfer between domains. Export room
