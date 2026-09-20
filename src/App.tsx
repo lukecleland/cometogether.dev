@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { Home } from "./pages/Home";
 import { Session } from "./pages/Session";
+import { getCodeFromURL } from "./utils/roomCode";
 
 type AppState =
   | { view: "home" }
   | { view: "session"; roomCode: string; isHost: boolean };
 
 function getInitialState(): AppState {
-  return { view: "home" };
+  const roomCode = getCodeFromURL();
+  return roomCode ? { view: "session", roomCode, isHost: false } : { view: "home" };
 }
 
 function App() {
