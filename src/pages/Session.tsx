@@ -1,3 +1,5 @@
+import { WhiteboardWidget } from "../components/WhiteboardWidget";
+import { changeBoard } from "../utils/whiteboardPanel";
 import { Toast } from '../components/Toast';
 import { useMovementSync } from "../hooks/useMovementSync";
 import { useScreenShare } from "../hooks/useScreenShare";
@@ -215,6 +217,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		initialUrl: panel.initialUrl,
 		note: panel.note,
 		code: panel.code,
+		whiteboard: panel.whiteboard,
 		dawTracks: panel.dawTracks ? normaliseDawTracks(panel.dawTracks) : undefined,
 		playback: panel.playback,
 		mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : undefined,
@@ -401,6 +404,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				initialUrl: panel.initialUrl,
 				note: panel.note,
 				code: panel.code,
+				whiteboard: panel.whiteboard,
 				dawTracks: panel.dawTracks ? normaliseDawTracks(panel.dawTracks) : undefined,
 				audioFileName: panel.type === 'audio' ? panel.initialFile?.name ?? panel.mediaFileName ?? savedRoom?.panels.find(saved => saved.id === panel.id)?.audioFileName : undefined,
 				imageFileName: panel.type === 'image' ? panel.initialFile?.name ?? panel.mediaFileName ?? savedRoom?.panels.find(saved => saved.id === panel.id)?.imageFileName : undefined,
@@ -543,6 +547,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			initialUrl: panel.initialUrl,
 			note: panel.note,
 			code: panel.code,
+			whiteboard: panel.whiteboard,
 			dawTracks: panel.dawTracks ? normaliseDawTracks(panel.dawTracks) : undefined,
 			playback: panel.playback,
 			mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : undefined,
@@ -571,6 +576,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			initialUrl: panel.initialUrl,
 			note: panel.note,
 			code: panel.code,
+			whiteboard: panel.whiteboard,
 			dawTracks: panel.dawTracks ? normaliseDawTracks(panel.dawTracks) : undefined,
 			playback: panel.playback,
 			mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : undefined,
@@ -718,6 +724,10 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			setViewSuggestion({ from: msg.id, canvas: msg.canvas });
 			return;
 		}
+		if (msg.type === 'whiteboard-change') {
+			setDynamicPanels(previous => previous.map(panel => panel.id === msg.id && panel.type === 'whiteboard' ? { ...panel, whiteboard: changeBoard(panel.whiteboard, msg.change) } : panel));
+			return;
+		}
 		if (msg.type === 'connector-add') {
 			setConnectors(previous => previous.some(connector => connector.id === msg.connector.id) ? previous : [...previous, msg.connector]);
 			return;
@@ -778,6 +788,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 					...(msg.url ? { initialUrl: msg.url } : {})
 				}
 			]);
+		} else if (msg.type === 'spawn-whiteboard') {
+			setDynamicPanels(previous => previous.some(panel => panel.id === msg.id) ? previous : [...previous, { id: msg.id, type: 'whiteboard', state: denormalisePanel(msg.state) }]);
 		} else if (msg.type === 'spawn-image') {
 			setDynamicPanels(prev => [...prev, { id: msg.id, type: 'image', state: denormalisePanel(msg.state) }]);
 		} else if (msg.type === 'spawn-audio') {
@@ -1500,6 +1512,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			audio: 360,
 			note: 420,
 			browser: 760,
+			whiteboard: 800,
 			code: 640,
 			recorder: 720,
 			daw: 900,
@@ -1582,7 +1595,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			const firstLine = text.split('\n')[0].trim();
 			if (kind === 'text' && firstLine) return firstLine.slice(0, 40);
 		}
-		const base = panel.type === 'daw' ? 'DAW' : panel.type === 'youtube' ? 'YouTube' : panel.type === 'note' ? 'Note' : panel.type === 'browser' ? 'Browser' : panel.type === 'code' ? 'Code' : panel.type === 'recorder' ? 'Recorder' : panel.type === 'image' ? 'Image' : 'Audio';
+		const base = panel.type === 'whiteboard' ? 'Whiteboard' : panel.type === 'daw' ? 'DAW' : panel.type === 'youtube' ? 'YouTube' : panel.type === 'note' ? 'Note' : panel.type === 'browser' ? 'Browser' : panel.type === 'code' ? 'Code' : panel.type === 'recorder' ? 'Recorder' : panel.type === 'image' ? 'Image' : 'Audio';
 		const sameType = dynamicPanels.filter(p => p.type === panel.type);
 		if (sameType.length < 2) return base;
 		return `${base} ${sameType.findIndex(p => p.id === panel.id) + 1}`;
@@ -1763,7 +1776,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	// Spawn a new dynamic panel at the given screen position (screen coords → world coords).
 	// Pass fromRemote=true when applying a remote-initiated spawn (skips sync to avoid loops).
 	const spawnPanel = (
-		type: 'youtube' | 'audio' | 'browser' | 'note' | 'code' | 'recorder' | 'image' | 'daw',
+		type: 'youtube' | 'audio' | 'browser' | 'note' | 'code' | 'recorder' | 'image' | 'daw' | 'whiteboard',
 		screenX: number,
 		screenY: number,
 		extra?: { initialVideoId?: string; initialFile?: File; initialUrl?: string; note?: NoteContent; code?: CodeContent; dimensions?: { width: number; height: number } },
@@ -1773,8 +1786,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		const imageRatio = extra?.dimensions ? extra.dimensions.width / extra.dimensions.height : 4 / 3;
 		const imageWidth = imageRatio >= 1 ? 520 : Math.max(240, 420 * imageRatio);
 		const imageHeight = (imageRatio >= 1 ? Math.max(180, 520 / imageRatio) : 420) + 32;
-		const w = type === 'daw' ? 900 : type === 'image' ? imageWidth : type === 'browser' ? 560 : type === 'recorder' ? 600 : type === 'code' ? 520 : type === 'youtube' ? 320 : type === 'note' ? 300 : 300;
-		const h = type === 'daw' ? 480 : type === 'image' ? imageHeight : type === 'browser' ? 420 : type === 'recorder' ? 480 : type === 'code' ? 380 : type === 'youtube' ? 260 : type === 'note' ? 300 : 360;
+		const w = type === 'whiteboard' ? 720 : type === 'daw' ? 900 : type === 'image' ? imageWidth : type === 'browser' ? 560 : type === 'recorder' ? 600 : type === 'code' ? 520 : type === 'youtube' ? 320 : type === 'note' ? 300 : 300;
+		const h = type === 'whiteboard' ? 540 : type === 'daw' ? 480 : type === 'image' ? imageHeight : type === 'browser' ? 420 : type === 'recorder' ? 480 : type === 'code' ? 380 : type === 'youtube' ? 260 : type === 'note' ? 300 : 360;
 		const worldX = (screenX - tx) / scale - w / 2;
 		const worldY = (screenY - ty) / scale - h / 2;
 		const nextZ = ++topZRef.current;
@@ -1796,6 +1809,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		if (!remoteId) {
 			if (type === 'youtube') {
 				sendSync({ type: 'spawn-youtube', id, videoId: extra?.initialVideoId, state: normalisePanel(state) });
+			} else if (type === 'whiteboard') {
+				sendSync({ type: 'spawn-whiteboard', id, state: normalisePanel(state) });
 			} else if (type === 'browser') {
 				sendSync({ type: 'spawn-browser', id, url: extra?.initialUrl, state: normalisePanel(state) });
 			} else if (type === 'audio') {
@@ -2351,6 +2366,10 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						<svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="18" height="14" rx="2" /><path d="M8 21h8M12 17v4M12 13V7m-3 3 3-3 3 3" strokeLinecap="round" strokeLinejoin="round" /></svg>
 						<span>{screenShare.busy ? 'Starting…' : screenShare.sharing ? 'Stop sharing' : 'Share screen'}</span>
 					</button>
+					<button onClick={() => spawnPanel('whiteboard', window.innerWidth / 2, window.innerHeight / 2)} title="Add a whiteboard"
+						className="grid w-full grid-cols-[1.25rem_1fr] items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-left text-xs font-medium text-zinc-300 hover:bg-zinc-700">
+						<svg className="h-4 w-4 text-brand-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="18" height="14" rx="2" /><path d="m8 21 4-4 4 4M7 12l3-4 3 3 4-4" /></svg><span>Whiteboard</span>
+					</button>
 					<button
 						onClick={() => imageInputRef.current?.click()}
 						className="grid w-full grid-cols-[1.25rem_1fr] items-center gap-1.5 text-left [&>:first-child]:justify-self-center bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 border border-zinc-700 text-zinc-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors"
@@ -2434,6 +2453,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 					</button>
 					{widgetMenuOpen && (
 						<div className="absolute right-0 mt-2 w-40 bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-xl p-1.5 shadow-xl z-50">
+							<button onClick={() => { spawnPanel('whiteboard', window.innerWidth / 2, window.innerHeight / 2); setWidgetMenuOpen(false); }} className="w-full rounded-lg px-2.5 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800">Whiteboard</button>
 							<button disabled={screenShare.busy || !localStream} aria-pressed={screenShare.sharing}
 								onClick={() => { setSharedBrowserId(null); void screenShare.toggle(); setWidgetMenuOpen(false); }}
 								className="w-full text-left px-2.5 py-2 text-xs text-violet-300 rounded-lg hover:bg-zinc-800 disabled:opacity-50">
@@ -2841,16 +2861,24 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						panelId={panel.id}
 						minimized={minimizedIds.includes(panel.id)}
 						onMinimize={() => minimizePanel(panel.id)}
-						minimizeControlHandled={panel.type === 'youtube' || panel.type === 'code' || panel.type === 'daw'}
+						minimizeControlHandled={panel.type === 'whiteboard' || panel.type === 'youtube' || panel.type === 'code' || panel.type === 'daw'}
 						state={panel.state}
 						excludeFromRecording={panel.type === 'recorder'}
 						{...makeDynamicPanelHandlers(panel.id)}
 						onToggleDock={() => toggleDock(panel.id)}
-						minWidth={panel.type === 'daw' ? 520 : panel.type === 'browser' ? 360 : panel.type === 'recorder' ? 420 : panel.type === 'code' ? 380 : panel.type === 'youtube' ? 280 : panel.type === 'image' ? 180 : 260}
-						minHeight={panel.type === 'daw' ? 320 : panel.type === 'browser' ? 240 : panel.type === 'audio' ? 300 : panel.type === 'image' ? 140 : 60}
+						minWidth={panel.type === 'whiteboard' ? 360 : panel.type === 'daw' ? 520 : panel.type === 'browser' ? 360 : panel.type === 'recorder' ? 420 : panel.type === 'code' ? 380 : panel.type === 'youtube' ? 280 : panel.type === 'image' ? 180 : 260}
+						minHeight={panel.type === 'whiteboard' ? 280 : panel.type === 'daw' ? 320 : panel.type === 'browser' ? 240 : panel.type === 'audio' ? 300 : panel.type === 'image' ? 140 : 60}
 						scale={canvas.scale}>
 						{zoomTagHandle(panel.id, panelLabels[panel.id] ?? fallbackLabel(panel))}
-						{panel.type === 'note' ? (
+						{panel.type === 'whiteboard' ? (
+							<WhiteboardWidget content={panel.whiteboard} title={customLabels[panel.id] ?? fallbackLabel(panel)}
+								onChange={change => {
+									setDynamicPanels(previous => previous.map(item => item.id === panel.id ? { ...item, whiteboard: changeBoard(item.whiteboard, change) } : item));
+									sendSync({ type: 'whiteboard-change', id: panel.id, change });
+								}}
+								onClose={() => removePanel(panel.id)} onMinimize={() => minimizePanel(panel.id)}
+								docked={dockedIds.includes(panel.id)} onToggleDock={() => toggleDock(panel.id)} />
+						) : panel.type === 'note' ? (
 							<StickyNote
 								title={customLabels[panel.id] ?? panelLabels[panel.id] ?? fallbackLabel(panel)}
 								note={panel.note ?? defaultNoteContent()}
