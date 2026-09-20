@@ -241,7 +241,7 @@ export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipan
       data-dock
       role="navigation"
       aria-label="Canvas dock"
-      className="fixed left-1/2 -translate-x-1/2 grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-1 bg-zinc-900/90 backdrop-blur border border-zinc-700 rounded-xl p-1.5 shadow-xl w-[40rem] max-w-[calc(100vw-2rem)] max-h-[40dvh] overflow-y-auto overflow-x-hidden"
+      className="fixed left-[20%] right-[20%] flex flex-wrap justify-center gap-1 max-h-[40dvh] overflow-y-auto overflow-x-hidden pointer-events-none [&>*]:pointer-events-auto"
       style={{
         zIndex: 999,
         bottom: "calc(1rem + env(safe-area-inset-bottom))",
@@ -249,7 +249,7 @@ export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipan
     >
       <button
         onClick={onShowAll}
-        className="flex min-w-0 min-h-8 items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white"
+        className="flex min-w-0 max-w-full min-h-8 shrink-0 items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white"
         title="Zoom to fit all canvas content"
         aria-label="Show all canvas content"
       >
@@ -263,12 +263,13 @@ export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipan
           // ── Rename mode ──
           <div
             key={entry.id}
-            className="flex min-w-0 min-h-8 items-center gap-1 bg-zinc-800 border border-brand-500 rounded-lg px-1.5 py-1"
+            className="flex min-w-0 max-w-full min-h-8 shrink-0 items-center gap-1 bg-zinc-800 border border-brand-500 rounded-lg px-1.5 py-1"
           >
             <DockIcon type={entry.type} />
             <input
               ref={inputRef}
               value={draft}
+              size={Math.max(8, draft.length)}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={commitEditing}
               onKeyDown={(e) => {
@@ -281,13 +282,13 @@ export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipan
               aria-label="Rename dock item"
               autoFocus
               spellCheck={false}
-              className="bg-transparent text-xs font-medium text-white placeholder:text-zinc-500 outline-none min-w-0 w-full"
+              className="bg-transparent text-xs font-medium text-white placeholder:text-zinc-500 outline-none min-w-0"
             />
           </div>
         ) : (
           <div
             key={entry.id}
-            className={`group flex min-w-0 min-h-8 items-center gap-0.5 rounded-lg pl-1.5 pr-1 py-1 transition-colors border ${
+            className={`group flex min-w-0 max-w-full min-h-8 shrink-0 items-center gap-0.5 rounded-lg pl-1.5 pr-1 py-1 transition-colors border ${
               entry.pulsing
                 ? "dock-pulse bg-brand-950/60 border-brand-500"
                 : "bg-zinc-800 hover:bg-zinc-700 border-zinc-700"
