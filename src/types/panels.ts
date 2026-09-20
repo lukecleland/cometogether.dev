@@ -1,3 +1,4 @@
+import type { BrowserScroll } from "../utils/browserUrl";
 import type { BoardContent } from "../utils/whiteboardPanel";
 import type { DawTrack } from "../utils/daw";
 /** Fixed video panel IDs (always present). */
@@ -120,4 +121,5 @@ export interface DynamicPanel {
   recordingMetadata?: RecordingMetadata[];
   playback?: PanelPlayback;
   initialUrl?: string;
+  browserScroll?: BrowserScroll;
 }

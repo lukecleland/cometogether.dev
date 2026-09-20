@@ -1,3 +1,4 @@
+import type { BrowserScroll } from "./browserUrl";
 import type { BoardContent } from "./whiteboardPanel";
 import type { DawTrack } from "./daw";
 import type { CanvasItem } from "../components/Whiteboard";
@@ -25,6 +26,7 @@ export interface PersistedPanel {
   whiteboard?: BoardContent;
   initialVideoId?: string;
   initialUrl?: string;
+  browserScroll?: BrowserScroll;
   note?: NoteContent;
   code?: CodeContent;
   audioFileName?: string;

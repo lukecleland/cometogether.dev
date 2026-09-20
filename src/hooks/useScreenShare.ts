@@ -95,7 +95,6 @@ export function useScreenShare(
       setSharing(true);
       try {
         await replaceVideoTrack(track);
-        return true;
       } catch {
         await stop();
         setError("Your screen could not be shared. Please try again.");
