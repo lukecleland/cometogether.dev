@@ -37,7 +37,7 @@ export function Home({ onStart }: HomeProps) {
             <span className="sr-only">maketogether.dev</span>
             <span aria-hidden="true" className="inline-flex items-baseline">
               <span className="brand-words text-brand-300">
-                {["make", "watch", "create", "record", "jam", "chat", "learn"].map((word, index) => (
+                {["make", "watch", "create", "record", "jam", "learn", "stop", "collaborate", "listen"].map((word, index) => (
                   <span key={word} className="brand-word" style={{ animationDelay: `${index * 2.6 - 0.4}s` }}>{word}</span>
                 ))}
               </span>

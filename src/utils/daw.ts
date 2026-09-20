@@ -5,9 +5,16 @@ interface DawRevision {
   revision: number;
   editId: string;
 }
+export interface DawMidiNote {
+  pitch: number;
+  start: number;
+  duration: number;
+  velocity: number;
+}
 export interface DawRegion extends DawRevision {
   name: string;
   sourceId: string;
+  notes?: DawMidiNote[];
   duration: number;
   start: number;
   trimStart: number;
@@ -20,6 +27,8 @@ export interface DawTrack extends DawRevision {
   muted: boolean;
   solo: boolean;
   regions: DawRegion[];
+  order?: number;
+  kind?: "audio" | "midi";
 }
 export const MAX_DAW_SECONDS = 1800;
 export const MAX_DAW_FILE_BYTES = 50 * 1024 * 1024;
@@ -39,6 +48,21 @@ export function isDawRegion(value: unknown): value is DawRegion {
   if (!object(value) || !revision(value) || !named(value)) return false;
   const r = value as unknown as DawRegion;
   return (
+    (r.notes === undefined ||
+      (Array.isArray(r.notes) &&
+        r.notes.length <= 10000 &&
+        r.notes.every(
+          (n) =>
+            Number.isInteger(n.pitch) &&
+            n.pitch >= 0 &&
+            n.pitch <= 127 &&
+            [n.start, n.duration, n.velocity].every(Number.isFinite) &&
+            n.start >= 0 &&
+            n.duration > 0 &&
+            n.start + n.duration <= r.duration + 0.001 &&
+            n.velocity > 0 &&
+            n.velocity <= 1,
+        ))) &&
     typeof r.sourceId === "string" &&
     !!r.sourceId &&
     [r.duration, r.start, r.trimStart, r.trimEnd].every(Number.isFinite) &&
@@ -62,6 +86,11 @@ function trackMetadata(value: unknown): value is Record<string, unknown> {
     Number.isFinite(value.pan) &&
     (value.pan as number) >= -1 &&
     (value.pan as number) <= 1 &&
+    (value.order === undefined ||
+      (Number.isSafeInteger(value.order) && (value.order as number) >= 0)) &&
+    (value.kind === undefined ||
+      value.kind === "audio" ||
+      value.kind === "midi") &&
     typeof value.muted === "boolean" &&
     typeof value.solo === "boolean"
   );
@@ -146,8 +175,34 @@ export function mergeDawTrack(
         regions: mergeDawRegions(current.regions, incoming.regions),
       }
     : { ...incoming, regions: mergeDawRegions([], incoming.regions) };
-  return [...tracks.filter((t) => t.id !== incoming.id), merged].sort((a, b) =>
-    a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+  return [...tracks.filter((t) => t.id !== incoming.id), merged].sort(
+    compareDawTracks,
+  );
+}
+/** Legacy tracks retain their prior ID order; new tracks append after them. */
+export const compareDawTracks = (a: DawTrack, b: DawTrack) =>
+  (a.order ?? 0) - (b.order ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+/** Return only changed ranks; callers stamp and share each changed track. */
+export function reorderDawTracks(
+  tracks: DawTrack[],
+  movingId: string,
+  targetId: string,
+  before: boolean,
+): DawTrack[] {
+  const ordered = tracks.filter((t) => !t.deleted).sort(compareDawTracks);
+  const moving = ordered.find((t) => t.id === movingId);
+  if (
+    !moving ||
+    movingId === targetId ||
+    !ordered.some((t) => t.id === targetId)
+  )
+    return [];
+  const next = ordered.filter((t) => t.id !== movingId);
+  const target = next.findIndex((t) => t.id === targetId);
+  next.splice(target + (before ? 0 : 1), 0, moving);
+  if (next.every((t, i) => t.id === ordered[i].id)) return [];
+  return next.flatMap((t, i) =>
+    t.order === i + 1 ? [] : [{ ...t, order: i + 1 }],
   );
 }
 export const visibleRegions = (track: DawTrack) =>
@@ -206,12 +261,35 @@ export function scheduleDaw(
   playhead: number,
   when: number,
 ) {
-  const sources: AudioBufferSourceNode[] = [];
+  const sources: AudioScheduledSourceNode[] = [];
   for (const track of audibleTracks(tracks))
     for (const region of visibleRegions(track)) {
       const buffer = buffers.get(region.sourceId),
         clip = clipSchedule(region, playhead);
-      if (!buffer || !clip) continue;
+      if (!clip) continue;
+      if (region.notes) {
+        for (const note of region.notes) {
+          const from = Math.max(note.start, clip.offset);
+          const end = Math.min(
+            note.start + note.duration,
+            clip.offset + clip.duration,
+          );
+          if (end <= from) continue;
+          const at = when + clip.delay + from - clip.offset;
+          sources.push(
+            scheduleDawNote(
+              context,
+              note.pitch,
+              note.velocity * track.volume,
+              track.pan,
+              at,
+              end - from,
+            ),
+          );
+        }
+        continue;
+      }
+      if (!buffer) continue;
       const source = context.createBufferSource(),
         gain = context.createGain(),
         pan = context.createStereoPanner();
@@ -228,6 +306,42 @@ export function scheduleDaw(
       sources.push(source);
     }
   return sources;
+}
+
+/** A basic soft synth, shared by live keys, playback and offline export. */
+export function scheduleDawNote(
+  context: BaseAudioContext,
+  pitch: number,
+  volume: number,
+  panValue: number,
+  when: number,
+  duration: number,
+) {
+  const source = context.createOscillator(),
+    gain = context.createGain(),
+    pan = context.createStereoPanner();
+  source.type = "triangle";
+  source.frequency.value = 440 * 2 ** ((pitch - 69) / 12);
+  pan.pan.value = panValue;
+  gain.gain.setValueAtTime(0, when);
+  gain.gain.linearRampToValueAtTime(
+    volume * 0.2,
+    when + Math.min(0.01, duration / 3),
+  );
+  gain.gain.setValueAtTime(
+    volume * 0.2,
+    when + Math.max(Math.min(0.01, duration / 3), duration - 0.03),
+  );
+  gain.gain.linearRampToValueAtTime(0, when + duration);
+  source.connect(gain).connect(pan).connect(context.destination);
+  source.onended = () => {
+    source.disconnect();
+    gain.disconnect();
+    pan.disconnect();
+  };
+  source.start(when);
+  source.stop(when + duration);
+  return source;
 }
 
 export function encodeWav(buffer: AudioBuffer): Blob {
