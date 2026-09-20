@@ -265,13 +265,14 @@ button:disabled {
   }
 }
 
-/* A fixed word slot keeps the wordmark and surrounding layout still. */
+/* Anchor together at the centre; the changing words remain right-aligned. */
 .landing-brand {
   font-size: clamp(1.25rem, 6.5vw, 1.875rem);
   line-height: 1.25;
 }
 .brand-words {
   display: inline-grid;
+  justify-self: end;
   overflow: hidden;
   vertical-align: bottom;
   perspective: 300px;
