@@ -1,3 +1,4 @@
+import { BROWSER_ENABLED } from '../utils/features';
 import { normaliseBrowserUrl, validBrowserScroll } from "../utils/browserUrl";
 import { WhiteboardWidget } from "../components/WhiteboardWidget";
 import { changeBoard } from "../utils/whiteboardPanel";
@@ -786,6 +787,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				}
 			]);
 		} else if (msg.type === 'spawn-browser') {
+			if (!BROWSER_ENABLED) return;
 			setDynamicPanels(prev => [
 				...prev,
 				{
@@ -1784,6 +1786,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		extra?: { initialVideoId?: string; initialFile?: File; initialUrl?: string; note?: NoteContent; code?: CodeContent; dimensions?: { width: number; height: number } },
 		remoteId?: string
 	) => {
+		if (type === 'browser' && !BROWSER_ENABLED) return;
 		const { x: tx, y: ty, scale } = canvasStateRef.current;
 		const imageRatio = extra?.dimensions ? extra.dimensions.width / extra.dimensions.height : 4 / 3;
 		const imageWidth = imageRatio >= 1 ? 520 : Math.max(240, 420 * imageRatio);
@@ -1935,8 +1938,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	// ── Paste onto the canvas ────────────────────────────────────────────────
 	// Whatever is on the clipboard lands where the pointer is, as the nearest
 	// sensible thing: an image becomes a compressed panel, a YouTube link becomes
-	// a player, any other link becomes a browser panel, and plain text becomes
-	// canvas text.
+	// a player, and other links and plain text become canvas text.
+	// Mini-browser creation stays disabled in favour of Share screen.
 	const pointerRef = useRef({ x: 0, y: 0 });
 	useEffect(() => {
 		const onPointer = (e: PointerEvent) => {
@@ -1984,7 +1987,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				return;
 			}
 
-			if (/^https?:\/\//i.test(raw)) {
+			if (BROWSER_ENABLED && /^https?:\/\//i.test(raw)) {
 				spawnPanel('browser', px, py, { initialUrl: raw });
 				return;
 			}
@@ -2428,7 +2431,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						</svg>
 						<span>Audio</span>
 					</button>
-					<button
+					{BROWSER_ENABLED && (<button
 						onClick={() => spawnPanel('browser', window.innerWidth / 2, window.innerHeight / 2)}
 						className="grid w-full grid-cols-[1.25rem_1fr] items-center gap-1.5 text-left [&>:first-child]:justify-self-center bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 border border-zinc-700 text-zinc-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors"
 						title="Add a mini browser">
@@ -2437,7 +2440,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 							<path d="M3 9h18M7 6.5h.01M10 6.5h.01" strokeLinecap="round" />
 						</svg>
 						<span>Browser</span>
-					</button>
+					</button>)}
 				</div>
 
 				{/* Add media buttons (mobile/tablet hamburger) */}
@@ -2509,14 +2512,14 @@ export function Session({ roomCode, isHost }: SessionProps) {
 								className="w-full text-left px-2.5 py-2 text-xs text-emerald-300 rounded-lg hover:bg-zinc-800 transition-colors">
 								DAW
 							</button>
-							<button
+							{BROWSER_ENABLED && (<button
 								onClick={() => {
 									spawnPanel('browser', window.innerWidth / 2, window.innerHeight / 2);
 									setWidgetMenuOpen(false);
 								}}
 								className="w-full text-left px-2.5 py-2 text-xs text-zinc-200 rounded-lg hover:bg-zinc-800 transition-colors">
 								Browser
-							</button>
+							</button>)}
 						</div>
 					)}
 				</div>

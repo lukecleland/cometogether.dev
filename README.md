@@ -46,7 +46,8 @@ between participants over WebRTC; PeerJS Cloud is used for signalling.
   playback and recording transport stay local.
 - **Record player** — load an audio file into an animated top-down turntable;
   play, pause and seek state is shared
-- **Mini browser** — enter a URL and render sites that permit iframe embedding
+- **Screen sharing** — share a browser tab or window to browse together. The mini
+  browser is disabled while reliable browsing sync is unavailable.
 - **Sticky notes** — switch between text, guitar chord diagrams and tablature;
   notes can contain multiple chords
 - **Code editor** — write or paste syntax-highlighted snippets and format
@@ -75,7 +76,8 @@ place; restoring never moves or zooms the canvas.
 - Select and tag an area, then return to it with a framed zoom
 - Invite the room to follow your viewport in an opt-in presentation mode;
   followers can leave at any time
-- Paste images, plain text, YouTube links and other URLs directly onto the canvas
+- Paste images, plain text and YouTube links directly onto the canvas; other URLs
+  are added as text
 - Drop image and audio files and transfer them to peers in chunks with progress feedback
 - Export the shared workspace as a portable JSON bundle and import it later;
   media filenames and playback metadata are included, but media bytes remain local
@@ -103,9 +105,8 @@ place; restoring never moves or zooms the canvas.
 - **Four participants is a deliberate ceiling.** A full mesh creates a direct
   media connection between every pair and does not scale like an SFU-backed
   conferencing system.
-- **Mini-browser compatibility depends on the destination site.** Sites using
-  `X-Frame-Options` or restrictive Content Security Policy headers cannot be
-  embedded.
+- **Mini browser is disabled.** Use **Share screen** to browse together. Existing
+  browser panels show a disabled notice; their saved data is retained.
 - **Browser media policies still apply.** iOS and other browsers may require a
   tap before remote audio can play, and autoplay restrictions can delay a
   remotely triggered player.
