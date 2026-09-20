@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RoomDataConnection } from "../hooks/usePeer";
 import { DockButton } from "./Dock";
 import { useYouTubeSync, type SyncMessage } from "../hooks/useYouTubeSync";
@@ -27,7 +27,11 @@ export function BrowserWidget({
   onToggleDock,
   onTitleChange,
   onUrlChange,
-  title = "Mini Browser",
+  title = "Browser",
+  sharing = false,
+  shareBusy = false,
+  onShareView,
+  sharedStream = null,
 }: {
   id: string;
   dataConnection: RoomDataConnection | null;
@@ -38,7 +42,19 @@ export function BrowserWidget({
   onTitleChange?: (title: string) => void;
   onUrlChange?: (url: string) => void;
   title?: string;
+  sharing?: boolean;
+  shareBusy?: boolean;
+  onShareView?: () => void;
+  sharedStream?: MediaStream | null;
 }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !sharedStream) return;
+    video.srcObject = sharedStream;
+    void video.play().catch(() => {});
+    return () => { video.srcObject = null; };
+  }, [sharedStream]);
   const [inputValue, setInputValue] = useState(initialUrl ?? "");
   const [url, setUrl] = useState(initialUrl ?? "");
   const [inputError, setInputError] = useState(false);
@@ -98,6 +114,7 @@ export function BrowserWidget({
           <div className="flex gap-2 px-2 py-2 bg-zinc-900 shrink-0">
             <input
               type="url"
+              disabled={!!sharedStream}
               value={inputValue}
               onChange={event => setInputValue(event.target.value)}
               onPaste={event => {
@@ -111,7 +128,7 @@ export function BrowserWidget({
               spellCheck={false}
               className={`min-w-0 flex-1 bg-zinc-800 text-zinc-100 text-xs rounded-lg px-3 py-1.5 outline-none border ${inputError ? "border-red-500" : "border-zinc-700 focus:border-sky-500"}`}
             />
-            <button onClick={navigate} className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-3 rounded-lg">
+            <button onClick={navigate} disabled={!!sharedStream} className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-3 rounded-lg">
               Go
             </button>
             {url && (
@@ -120,9 +137,14 @@ export function BrowserWidget({
               </a>
             )}
           </div>
+          <div className="flex items-center justify-between gap-2 border-t border-zinc-800 px-2 py-1.5 text-[11px] text-zinc-400">
+            <span>{sharing ? 'Your browsing view is live' : sharedStream ? 'Watching shared browsing view' : 'Open the page in a tab (↗), then choose that tab to share.'}</span>
+            {onShareView && !sharedStream && <button onClick={onShareView} disabled={shareBusy} className="shrink-0 rounded bg-brand-600 px-2 py-1 font-medium text-white hover:bg-brand-500 disabled:opacity-50">{sharing ? 'Stop sharing view' : 'Share browsing view'}</button>}
+          </div>
           <div className="relative flex-1 min-h-0 bg-white">
+            {sharedStream && <video ref={videoRef} autoPlay playsInline muted controls className="absolute inset-0 z-10 h-full w-full bg-black object-contain" aria-label="Shared browsing view" /> }
             {url ? (
-              <iframe key={url} src={url} title="Mini browser" className="absolute inset-0 w-full h-full border-0" />
+              <iframe key={url} src={url} title="Browser" className="absolute inset-0 w-full h-full border-0" />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-zinc-500 bg-zinc-100">
                 Enter a URL to browse
