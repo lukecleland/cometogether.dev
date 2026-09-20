@@ -375,8 +375,20 @@ DAW shortcuts. Open **?** for the in-window reference.
 | + / - | Zoom the timeline |
 | Escape | Deselect and close shortcut help |
 
-Track edits remain shared; selection, focus, playback and the recording
-transport are local to each participant. Recordings use the selected track, or create one if none is selected.
+Track edits, track/region selection, timeline zoom, playback, pause, seeking and
+recording activity are shared with every connected participant. Any participant
+can stop a take; only the person who starts it captures their microphone. Live
+waveforms and MIDI notes appear while recording, and the completed take/audio
+file is shared as before. Instrument-key previews are audible to peers too.
+Late joiners catch up to the current transport, with periodic drift correction.
+If the transport owner disconnects, peers stop after an eight-second timeout;
+held instrument previews expire after two seconds without updates. Session
+activity is transient and does not restart when a saved room is reopened.
+Browsers that block automatic audio display **Enable audio**; the shared
+playhead still advances. This is network-synchronized playback, not sample-accurate
+remote recording or live microphone audio streaming. Keyboard focus, menus,
+file pickers and exports stay local. Recordings use the selected track, or create
+one if none is selected.
 
 ## Versioning
 

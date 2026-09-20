@@ -503,3 +503,53 @@ test("reordering tracks preserves regions and mixer settings and supports legacy
     );
   assert.deepEqual(plain(back.map((t) => t.id)), ["a", "b", "c"]);
 });
+
+const dawSync = load("src/utils/dawSync.ts");
+const activity = {
+  revision: 3,
+  id: "b",
+  owner: "peer",
+  mode: "playing",
+  position: 12,
+  at: 10000,
+};
+test("DAW activity catches up in-flight playback but preserves paused position", () => {
+  assert.equal(dawSync.dawActivityPosition(activity, 12500), 14.5);
+  assert.equal(
+    dawSync.dawActivityPosition({ ...activity, mode: "stopped" }, 12500),
+    12,
+  );
+  assert.equal(dawSync.dawActivityPosition(activity, 9000), 12);
+  assert.equal(dawSync.dawActivityPosition(activity, 9000000), 1800);
+});
+test("DAW control ordering rejects stale commands and breaks concurrent ties consistently", () => {
+  assert.ok(
+    dawSync.compareDawActivity(activity, { ...activity, revision: 2 }) > 0,
+  );
+  assert.ok(dawSync.compareDawActivity(activity, { ...activity, id: "c" }) < 0);
+  assert.equal(
+    dawSync.compareDawActivity(activity, { ...activity, peaks: [] }),
+    0,
+  );
+});
+test("DAW activity validates bounded remote recording previews", () => {
+  assert.ok(dawSync.validDawActivity(activity));
+  assert.ok(
+    dawSync.validDawActivity({
+      ...activity,
+      mode: "recording",
+      trackId: "track",
+      peaks: [{ at: 1, peak: 0.5 }],
+    }),
+  );
+  for (const patch of [
+    { position: NaN },
+    { position: -1 },
+    { at: Infinity },
+    { mode: "recording" },
+    { peaks: Array(601).fill({ at: 0, peak: 0 }) },
+    { peaks: [{ at: 0, peak: 2 }] },
+    { notes: [{ pitch: 200, start: 0, duration: 1, velocity: 1 }] },
+  ])
+    assert.equal(dawSync.validDawActivity({ ...activity, ...patch }), false);
+});
