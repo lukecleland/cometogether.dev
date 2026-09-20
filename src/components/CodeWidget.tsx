@@ -1,3 +1,4 @@
+import { Toast } from './Toast';
 import { useMemo, useRef, useState } from 'react';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-javascript';
@@ -67,7 +68,7 @@ export function CodeWidget({ code, onChange, onClose, docked = false, onToggleDo
 					{onClose && <button className="no-drag px-1 text-zinc-400 hover:text-white" onClick={onClose} aria-label="Close code widget">×</button>}
 				</div>
 			</div>
-			{formatError && <div role="alert" className="no-drag shrink-0 border-t border-red-900/60 bg-red-950/70 px-2 py-1 text-[10px] text-red-300" title={formatError}>Format failed: check that the code is valid {code.language}.</div>}
+			<Toast message={formatError ? `Format failed: check that the code is valid ${code.language}.` : null} label="Code formatting error" onDismiss={() => setFormatError(null)} />
 			<div className="no-drag relative min-h-0 flex-1 overflow-hidden bg-zinc-950">
 			<pre ref={highlightRef} aria-hidden="true" className="code-highlight pointer-events-none absolute inset-0 overflow-hidden whitespace-pre p-3 font-mono text-xs leading-relaxed"><code dangerouslySetInnerHTML={highlighted === null ? undefined : { __html: `${highlighted}\n` }}>{highlighted === null ? `${code.text}\n` : undefined}</code></pre>
 			<textarea

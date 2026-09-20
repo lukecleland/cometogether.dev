@@ -1,3 +1,4 @@
+import { Toast } from './Toast';
 import { useDawSync } from "../hooks/useDawSync";
 import type { RoomDataConnection } from "../hooks/usePeer";
 import { dawActivityPosition, type DawActivity } from "../utils/dawSync";
@@ -1786,14 +1787,7 @@ export function DawWidget({
             </div>
           </div>
         )}
-        {error && (
-          <p
-            role="alert"
-            className="shrink-0 bg-red-950/50 px-3 py-2 text-xs text-red-200"
-          >
-            {error}
-          </p>
-        )}
+        <Toast message={error} label="DAW error" onDismiss={() => setError("")} />
         <div
           ref={timelineRef}
           onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
