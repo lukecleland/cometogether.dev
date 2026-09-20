@@ -38,8 +38,8 @@ import type { RoomSnapshot } from '../utils/roomPersistence';
  *   does — your "You" is their "Guest".
  */
 export type SyncMessage =
-	| { type: 'room-state-request' }
-	| { type: 'room-state-snapshot'; snapshot: RoomSnapshot }
+	| { type: 'room-state-request'; requestId?: string }
+	| { type: 'room-state-snapshot'; snapshot: RoomSnapshot; requestId?: string }
 	| { type: 'room-state-import'; snapshot: RoomSnapshot }
 	| { type: 'load'; id: string; videoId: string }
 	| { type: 'play'; id: string; time: number; at?: number }
@@ -150,7 +150,7 @@ interface UseYouTubeSyncOptions {
 }
 
 interface UseYouTubeSyncResult {
-	sendSync: (msg: SyncMessage) => void;
+	sendSync: (msg: SyncMessage, targetPeerId?: string) => void;
 }
 
 export function useYouTubeSync({ dataConnection, onRemoteSync }: UseYouTubeSyncOptions): UseYouTubeSyncResult {
@@ -166,9 +166,9 @@ export function useYouTubeSync({ dataConnection, onRemoteSync }: UseYouTubeSyncO
 	}, [dataConnection]);
 
 	const sendSync = useCallback(
-		(msg: SyncMessage) => {
+		(msg: SyncMessage, targetPeerId?: string) => {
 			if (dataConnection?.open) {
-				dataConnection.send(msg);
+				dataConnection.send(targetPeerId ? { ...msg, __meshTargetPeerId: targetPeerId } : msg);
 			}
 		},
 		[dataConnection]

@@ -15,6 +15,7 @@ export interface RemotePeerStream {
  */
 export interface RoomDataConnection {
   readonly open: boolean;
+  readonly isLead?: boolean;
   readonly dataChannel?: RTCDataChannel;
   on(event: "data", listener: (data: unknown) => void): void;
   off(event: "data", listener: (data: unknown) => void): void;
@@ -25,11 +26,15 @@ class MeshDataConnection implements RoomDataConnection {
   private connections = new Map<string, DataConnection>();
   private listeners = new Set<(data: unknown) => void>();
   private localPeerId = "";
+  private roomPeerId = "";
   private seenMessages = new Set<string>();
 
-  configure(localPeerId: string) {
+  configure(localPeerId: string, roomPeerId: string) {
     this.localPeerId = localPeerId;
+    this.roomPeerId = roomPeerId;
   }
+
+  get isLead() { return this.localPeerId === this.roomPeerId; }
 
   get open() {
     return [...this.connections.values()].some(connection => connection.open);
@@ -514,7 +519,8 @@ export function usePeer({
         if (isMeshMessage(raw)) {
           if (!mesh.accept(raw.__meshMessageId)) return;
           mesh.relay(raw, connection.peer);
-          mesh.emit(identifyPeerMessage(raw, raw.__meshSourcePeerId, peer.id));
+          if (!raw.__meshTargetPeerId || raw.__meshTargetPeerId === peer.id)
+            mesh.emit(identifyPeerMessage(raw, raw.__meshSourcePeerId, peer.id));
           return;
         }
         if (isMeshControl(raw)) {
@@ -611,7 +617,7 @@ export function usePeer({
       peer.on("open", () => {
         if (!active || peerRef.current !== peer) return;
         setError(null);
-        mesh.configure(peer.id);
+        mesh.configure(peer.id, roomId);
         if (mesh.open) {
           publishConnectionState();
           mesh.peers().forEach(id => scheduleCall(peer, id));
