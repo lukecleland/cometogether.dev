@@ -942,6 +942,24 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	});
 	sendSyncRef.current = sendSync;
 
+	// Older saved rooms used one anonymous "remote" bookmark. Bind it to the
+	// actual participant so its dock, video and cursor share the same name.
+	const firstRemotePeerId = remoteStreams[0]?.peerId;
+	const hasLegacyRemoteDock = dockedIds.includes('remote');
+	const legacyRemoteLabel = customLabels.remote;
+	useEffect(() => {
+		if (!firstRemotePeerId || (!hasLegacyRemoteDock && legacyRemoteLabel === undefined)) return;
+		const id = remotePanelId(firstRemotePeerId);
+		setDockedIds(previous => [...new Set(previous.map(entry => entry === 'remote' ? id : entry))]);
+		setCustomLabels(previous => {
+			if (previous.remote === undefined) return previous;
+			const next = { ...previous };
+			// Keep the identified participant's name; the old placeholder has no identity.
+			delete next.remote;
+			return next;
+		});
+	}, [firstRemotePeerId, hasLegacyRemoteDock, legacyRemoteLabel]);
+
 	const localDisplayName = customLabels.local ?? '';
 	useEffect(() => {
 		if (status !== 'connected') return;
@@ -1593,8 +1611,9 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		if (positionTag) {
 			return [{ id, type: 'position', label: custom ?? positionTag.label, renamed: !!custom, pulsing, minimized }];
 		}
-		if (id === 'local' || id === 'remote') {
-			const auto = id === 'local' ? 'You' : 'Guest';
+		if (id === 'remote') return []; // Legacy placeholder is migrated to a real peer above.
+		if (id === 'local') {
+			const auto = 'You';
 			return [{ id, type: id, label: custom ?? auto, renamed: !!custom, pulsing, minimized }];
 		}
 		const remotePeerId = peerIdFromPanelId(id);
@@ -2759,6 +2778,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						)),
 						<div
 							key={`cursor:${peerId}`}
+							data-participant-cursor={peerId}
 							className="absolute z-[996]"
 							style={{ left: cursor.x, top: cursor.y, transform: `scale(${1 / canvas.scale})`, transformOrigin: 'top left' }}>
 							<svg className="h-6 w-5 drop-shadow-md" viewBox="0 0 20 24" aria-hidden="true">
