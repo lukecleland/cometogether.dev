@@ -1,3 +1,4 @@
+import { useMovementSync } from "../hooks/useMovementSync";
 import { useScreenShare } from "../hooks/useScreenShare";
 import { BrandMark } from "../components/BrandMark";
 import { DawWidget } from "../components/DawWidget";
@@ -327,7 +328,6 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	const [laserEnabled, setLaserEnabled] = useState(false);
 	const [remoteCursors, setRemoteCursors] = useState<Record<string, RemoteCursor>>({});
 	const [localLaserPoints, setLocalLaserPoints] = useState<LaserPoint[]>([]);
-	const cursorSendRef = useRef({ lastAt: 0 });
 
 	// Whiteboard
 	const whiteboardRef = useRef<WhiteboardHandle>(null);
@@ -969,10 +969,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		setPresentationFollowers([]);
 	}, [participantCount]);
 
-	const broadcastCursor = useCallback((clientX: number, clientY: number) => {
+	const cursorSync = useMovementSync(({ clientX, clientY }: { clientX: number; clientY: number }) => {
 		const now = Date.now();
-		if (now - cursorSendRef.current.lastAt < 40) return;
-		cursorSendRef.current.lastAt = now;
 		const current = canvasStateRef.current;
 		const x = (clientX - current.x) / current.scale;
 		const y = (clientY - current.y) / current.scale;
@@ -980,7 +978,10 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		if (laserEnabled) {
 			setLocalLaserPoints(previous => [...previous.filter(point => point.expiresAt > now), { id: crypto.randomUUID(), x, y, expiresAt: now + 900 }].slice(-32));
 		}
-	}, [laserEnabled, sendSync]);
+	});
+	const broadcastCursor = useCallback((clientX: number, clientY: number) => {
+		cursorSync.schedule({ clientX, clientY });
+	}, [cursorSync]);
 
 	useEffect(() => {
 		const timer = setInterval(() => {
@@ -2157,7 +2158,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			onMouseUp={handleOuterMouseUp}
 			onMouseLeave={handleOuterMouseUp}
 			onPointerMove={event => broadcastCursor(event.clientX, event.clientY)}
-			onPointerLeave={() => sendSync({ type: 'cursor-leave' })}
+			onPointerLeave={() => { cursorSync.cancel(); sendSync({ type: 'cursor-leave' }); }}
 			onContextMenu={e => {
 				if (e.target instanceof HTMLCanvasElement) e.preventDefault();
 			}}
