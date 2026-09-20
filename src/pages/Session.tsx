@@ -1,3 +1,4 @@
+import { normaliseBrowserUrl, validBrowserScroll } from "../utils/browserUrl";
 import { WhiteboardWidget } from "../components/WhiteboardWidget";
 import { changeBoard } from "../utils/whiteboardPanel";
 import { Toast } from '../components/Toast';
@@ -7,7 +8,7 @@ import { BrandMark } from "../components/BrandMark";
 import { DawWidget } from "../components/DawWidget";
 import { mergeDawTrack, normaliseDawTracks } from "../utils/daw";
 import { acquireLocalMedia } from "../utils/localMedia";
-import { useState, useEffect, useEffectEvent, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 /**
  * Session — the top-level coordinator for an active maketogether session.
@@ -215,6 +216,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		state: panel.state,
 		initialVideoId: panel.initialVideoId,
 		initialUrl: panel.initialUrl,
+		browserScroll: panel.browserScroll,
 		note: panel.note,
 		code: panel.code,
 		whiteboard: panel.whiteboard,
@@ -402,6 +404,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				state: panel.state,
 				initialVideoId: panel.initialVideoId,
 				initialUrl: panel.initialUrl,
+				browserScroll: panel.browserScroll,
 				note: panel.note,
 				code: panel.code,
 				whiteboard: panel.whiteboard,
@@ -441,8 +444,6 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		localStream
 	});
 	const screenShare = useScreenShare(localStream, replaceVideoTrack);
-	const [sharedBrowserId, setSharedBrowserId] = useState<string | null>(null);
-	const [browserPresenters, setBrowserPresenters] = useState<Record<string, string>>({});
 	dataConnectionRef.current = dataConnection;
 
 	useEffect(() => {
@@ -545,6 +546,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			state: { ...panel.state },
 			initialVideoId: panel.initialVideoId,
 			initialUrl: panel.initialUrl,
+			browserScroll: panel.browserScroll,
 			note: panel.note,
 			code: panel.code,
 			whiteboard: panel.whiteboard,
@@ -574,6 +576,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			state: { ...panel.state },
 			initialVideoId: panel.initialVideoId,
 			initialUrl: panel.initialUrl,
+			browserScroll: panel.browserScroll,
 			note: panel.note,
 			code: panel.code,
 			whiteboard: panel.whiteboard,
@@ -626,14 +629,6 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	// Panel sync — wired to the same data channel as YouTube sync
 	const handleRemoteSync = useCallback((msg: SyncMessage) => {
 		const sourcePeerId = (msg as SyncMessage & { __meshSourcePeerId?: string }).__meshSourcePeerId;
-		if (msg.type === 'browser-present' && sourcePeerId) {
-			setBrowserPresenters(previous => {
-				if (msg.active) return { ...previous, [msg.id]: sourcePeerId };
-				if (previous[msg.id] !== sourcePeerId) return previous;
-				const next = { ...previous }; delete next[msg.id]; return next;
-			});
-			return;
-		}
 		if (msg.type === 'presentation-invite') {
 			if (sourcePeerId && msg.id !== presentingId) setPresentationInvite({ id: msg.id, presenterPeerId: sourcePeerId, canvas: canvasFromPresentation(msg.canvas) });
 			return;
@@ -722,6 +717,18 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		}
 		if (msg.type === 'view-suggestion') {
 			setViewSuggestion({ from: msg.id, canvas: msg.canvas });
+			return;
+		}
+		if (msg.type === 'browser-load') {
+			const url = normaliseBrowserUrl(msg.url);
+			if (url) {
+				setDynamicPanels(previous => previous.map(panel => panel.id === msg.id && panel.type === 'browser' ? { ...panel, initialUrl: url, browserScroll: undefined } : panel));
+				setPanelLabels(previous => ({ ...previous, [msg.id]: new URL(url).hostname }));
+			}
+			return;
+		}
+		if (msg.type === 'browser-scroll') {
+			if (validBrowserScroll(msg)) setDynamicPanels(previous => previous.map(panel => panel.id === msg.id && panel.type === 'browser' && panel.initialUrl === msg.url ? { ...panel, browserScroll: { url: msg.url, position: msg.position } } : panel));
 			return;
 		}
 		if (msg.type === 'whiteboard-change') {
@@ -934,30 +941,6 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		onRemoteSync: handleRemoteSync
 	});
 	sendSyncRef.current = sendSync;
-
-	const activeBrowserShare = screenShare.sharing && dynamicPanels.some(panel => panel.id === sharedBrowserId) ? sharedBrowserId : null;
-	useEffect(() => {
-		if (!activeBrowserShare) return;
-		sendSync({ type: 'browser-present', id: activeBrowserShare, active: true });
-		return () => sendSync({ type: 'browser-present', id: activeBrowserShare, active: false });
-	}, [activeBrowserShare, participantCount, status, sendSync]);
-
-	const stopRemovedBrowserShare = useEffectEvent(() => {
-		setSharedBrowserId(null);
-		void screenShare.stop();
-	});
-	useEffect(() => {
-		if (sharedBrowserId && screenShare.sharing && !dynamicPanels.some(panel => panel.id === sharedBrowserId)) stopRemovedBrowserShare();
-	}, [sharedBrowserId, screenShare.sharing, dynamicPanels]);
-
-	const shareBrowserView = async (id: string) => {
-		if (screenShare.sharing) {
-			if (sharedBrowserId === id) { setSharedBrowserId(null); await screenShare.stop(); }
-			else setSharedBrowserId(id);
-			return;
-		}
-		if (await screenShare.toggle()) setSharedBrowserId(id);
-	};
 
 	const localDisplayName = customLabels.local ?? '';
 	useEffect(() => {
@@ -2358,7 +2341,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				{/* Add media buttons (desktop rail) */}
 				<div className="fixed right-3 z-[999] hidden max-h-[calc(100vh-5rem)] w-32 shrink-0 flex-col items-stretch gap-1.5 overflow-y-auto lg:flex" style={{ top: 'calc(3rem + env(safe-area-inset-top) + 0.75rem)' }}>
 					<button
-						onClick={() => { setSharedBrowserId(null); void screenShare.toggle(); }}
+						onClick={() => void screenShare.toggle()}
 						disabled={screenShare.busy || !localStream}
 						aria-pressed={screenShare.sharing}
 						title={screenShare.sharing ? 'Stop sharing your screen' : 'Share your screen with participants'}
@@ -2455,7 +2438,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						<div className="absolute right-0 mt-2 w-40 bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-xl p-1.5 shadow-xl z-50">
 							<button onClick={() => { spawnPanel('whiteboard', window.innerWidth / 2, window.innerHeight / 2); setWidgetMenuOpen(false); }} className="w-full rounded-lg px-2.5 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800">Whiteboard</button>
 							<button disabled={screenShare.busy || !localStream} aria-pressed={screenShare.sharing}
-								onClick={() => { setSharedBrowserId(null); void screenShare.toggle(); setWidgetMenuOpen(false); }}
+								onClick={() => { void screenShare.toggle(); setWidgetMenuOpen(false); }}
 								className="w-full text-left px-2.5 py-2 text-xs text-violet-300 rounded-lg hover:bg-zinc-800 disabled:opacity-50">
 								{screenShare.sharing ? 'Stop sharing' : 'Share screen'}
 							</button>
@@ -2984,18 +2967,20 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						) : (
 							<BrowserWidget
 								title={customLabels[panel.id] ?? panelLabels[panel.id] ?? fallbackLabel(panel)}
-								id={panel.id}
-								dataConnection={dataConnection}
 								initialUrl={panel.initialUrl}
-								sharing={activeBrowserShare === panel.id}
-								shareBusy={screenShare.busy || !localStream}
-								onShareView={() => void shareBrowserView(panel.id)}
-								sharedStream={activeBrowserShare === panel.id ? null : remoteStreams.find(remote => remote.peerId === browserPresenters[panel.id])?.stream ?? null}
 								onClose={() => removePanel(panel.id)}
 								docked={dockedIds.includes(panel.id)}
 								onToggleDock={() => toggleDock(panel.id)}
-								onTitleChange={title => setPanelLabels(prev => ({ ...prev, [panel.id]: title }))}
-								onUrlChange={url => updateDynamicPanel(panel.id, { initialUrl: url })}
+								browserScroll={panel.browserScroll}
+								onScrollChange={scroll => {
+									updateDynamicPanel(panel.id, { browserScroll: scroll });
+									sendSync({ type: 'browser-scroll', id: panel.id, ...scroll });
+								}}
+								onUrlChange={url => {
+									updateDynamicPanel(panel.id, { initialUrl: url, browserScroll: undefined });
+									setPanelLabels(previous => ({ ...previous, [panel.id]: new URL(url).hostname }));
+									sendSync({ type: 'browser-load', id: panel.id, url });
+								}}
 							/>
 						)}
 					</DraggablePanel>

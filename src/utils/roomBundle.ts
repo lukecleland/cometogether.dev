@@ -1,3 +1,4 @@
+import { validBrowserScroll } from "./browserUrl";
 import { validBoard } from "./whiteboardPanel";
 import { normaliseDawTrack, normaliseDawTracks } from "./daw";
 import type { RoomSnapshot } from "./roomPersistence";
@@ -61,6 +62,7 @@ function isRecording(value: unknown): boolean {
 
 function isPanel(value: unknown): boolean {
   if (!isObject(value) || typeof value.id !== "string" || typeof value.type !== "string" || !PANEL_TYPES.has(value.type) || !hasPanelState(value.state)) return false;
+  if (value.browserScroll !== undefined && !validBrowserScroll(value.browserScroll)) return false;
   if (value.whiteboard !== undefined && !validBoard(value.whiteboard)) return false;
   if (value.dawTracks !== undefined && (!Array.isArray(value.dawTracks) || value.dawTracks.length > 1000 || !value.dawTracks.every(track => normaliseDawTrack(track) !== null))) return false;
   if (value.code !== undefined && (!isObject(value.code) || typeof value.code.text !== "string" || typeof value.code.language !== "string")) return false;

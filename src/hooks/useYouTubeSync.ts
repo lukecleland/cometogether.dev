@@ -85,7 +85,7 @@ export type SyncMessage =
 	| { type: 'whiteboard-change'; id: string; change: BoardChange }
 	| { type: 'spawn-image'; id: string; state: PanelState }
 	| { type: 'browser-load'; id: string; url: string }
-	| { type: 'browser-present'; id: string; active: boolean }
+	| { type: 'browser-scroll'; id: string; url: string; position: number }
 	| {
 			type: 'spawn-audio';
 			id: string;

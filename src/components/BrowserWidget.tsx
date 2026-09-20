@@ -1,93 +1,43 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { RoomDataConnection } from "../hooks/usePeer";
+import { useState } from "react";
 import { DockButton } from "./Dock";
-import { useYouTubeSync, type SyncMessage } from "../hooks/useYouTubeSync";
-
-function normaliseUrl(input: string): string | null {
-  const value = input.trim();
-  if (!value) return null;
-  try {
-    const url = new URL(
-      /^[a-z][a-z\d+.-]*:/i.test(value) ? value : `https://${value}`,
-    );
-    return url.protocol === "http:" || url.protocol === "https:"
-      ? url.toString()
-      : null;
-  } catch {
-    return null;
-  }
-}
+import { WikipediaReader } from "./WikipediaReader";
+import { normaliseBrowserUrl, wikipediaArticle, type BrowserScroll } from "../utils/browserUrl";
+import { Toast } from "./Toast";
 
 export function BrowserWidget({
-  id,
-  dataConnection,
   initialUrl,
+  browserScroll,
+  onScrollChange,
   onClose,
   docked = false,
   onToggleDock,
-  onTitleChange,
   onUrlChange,
   title = "Browser",
-  sharing = false,
-  shareBusy = false,
-  onShareView,
-  sharedStream = null,
 }: {
-  id: string;
-  dataConnection: RoomDataConnection | null;
   initialUrl?: string;
   onClose?: () => void;
   docked?: boolean;
   onToggleDock?: () => void;
-  onTitleChange?: (title: string) => void;
-  onUrlChange?: (url: string) => void;
+  onUrlChange: (url: string) => void;
+  browserScroll?: BrowserScroll;
+  onScrollChange: (scroll: BrowserScroll) => void;
   title?: string;
-  sharing?: boolean;
-  shareBusy?: boolean;
-  onShareView?: () => void;
-  sharedStream?: MediaStream | null;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !sharedStream) return;
-    video.srcObject = sharedStream;
-    void video.play().catch(() => {});
-    return () => { video.srcObject = null; };
-  }, [sharedStream]);
-  const [inputValue, setInputValue] = useState(initialUrl ?? "");
-  const [url, setUrl] = useState(initialUrl ?? "");
+  const url = initialUrl ?? '';
+  const [draft, setDraft] = useState({ url, value: url });
+  const inputValue = draft.url === url ? draft.value : url;
   const [inputError, setInputError] = useState(false);
-
-  const handleRemoteSync = useCallback(
-    (message: SyncMessage) => {
-      if (message.type !== "browser-load" || message.id !== id) return;
-      setInputValue(message.url);
-      setUrl(message.url);
-      onTitleChange?.(new URL(message.url).hostname);
-      onUrlChange?.(message.url);
-    },
-    [id, onTitleChange, onUrlChange],
-  );
-  const { sendSync } = useYouTubeSync({
-    dataConnection,
-    onRemoteSync: handleRemoteSync,
-  });
-
   const loadUrl = (nextUrl: string) => {
-    setInputValue(nextUrl);
-    setUrl(nextUrl);
-    onTitleChange?.(new URL(nextUrl).hostname);
-    onUrlChange?.(nextUrl);
-    sendSync({ type: "browser-load", id, url: nextUrl });
+    setDraft({ url: nextUrl, value: nextUrl });
+    onUrlChange(nextUrl);
   };
 
   const navigate = () => {
-    const nextUrl = normaliseUrl(inputValue);
+    const nextUrl = normaliseBrowserUrl(inputValue);
     if (nextUrl) loadUrl(nextUrl);
     else {
       setInputError(true);
-      setTimeout(() => setInputError(false), 1500);
+
     }
   };
 
@@ -113,12 +63,12 @@ export function BrowserWidget({
         <>
           <div className="flex gap-2 px-2 py-2 bg-zinc-900 shrink-0">
             <input
+              aria-label="Browser URL"
               type="url"
-              disabled={!!sharedStream}
               value={inputValue}
-              onChange={event => setInputValue(event.target.value)}
+              onChange={event => setDraft({ url, value: event.target.value })}
               onPaste={event => {
-                const nextUrl = normaliseUrl(event.clipboardData.getData("text"));
+                const nextUrl = normaliseBrowserUrl(event.clipboardData.getData("text"));
                 if (!nextUrl) return;
                 event.preventDefault();
                 loadUrl(nextUrl);
@@ -128,7 +78,7 @@ export function BrowserWidget({
               spellCheck={false}
               className={`min-w-0 flex-1 bg-zinc-800 text-zinc-100 text-xs rounded-lg px-3 py-1.5 outline-none border ${inputError ? "border-red-500" : "border-zinc-700 focus:border-sky-500"}`}
             />
-            <button onClick={navigate} disabled={!!sharedStream} className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-3 rounded-lg">
+            <button onClick={navigate} className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-3 rounded-lg">
               Go
             </button>
             {url && (
@@ -137,13 +87,12 @@ export function BrowserWidget({
               </a>
             )}
           </div>
-          <div className="flex items-center justify-between gap-2 border-t border-zinc-800 px-2 py-1.5 text-[11px] text-zinc-400">
-            <span>{sharing ? 'Your browsing view is live' : sharedStream ? 'Watching shared browsing view' : 'Open the page in a tab (↗), then choose that tab to share.'}</span>
-            {onShareView && !sharedStream && <button onClick={onShareView} disabled={shareBusy} className="shrink-0 rounded bg-brand-600 px-2 py-1 font-medium text-white hover:bg-brand-500 disabled:opacity-50">{sharing ? 'Stop sharing view' : 'Share browsing view'}</button>}
-          </div>
+          <Toast message={inputError ? 'Enter a valid website URL.' : null} label="Browser URL error" onDismiss={() => setInputError(false)} />
+          {wikipediaArticle(url) && <div className="px-2 pb-1 text-[10px] text-brand-300">Wikipedia · links and scrolling synced</div>}
           <div className="relative flex-1 min-h-0 bg-white">
-            {sharedStream && <video ref={videoRef} autoPlay playsInline muted controls className="absolute inset-0 z-10 h-full w-full bg-black object-contain" aria-label="Shared browsing view" /> }
-            {url ? (
+            {wikipediaArticle(url) ? (
+              <WikipediaReader key={url} url={url} scroll={browserScroll} onNavigate={loadUrl} onScroll={onScrollChange} />
+            ) : url ? (
               <iframe key={url} src={url} title="Browser" className="absolute inset-0 w-full h-full border-0" />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-zinc-500 bg-zinc-100">

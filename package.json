@@ -1,7 +1,7 @@
 {
   "name": "maketogether.dev",
   "private": true,
-  "version": "0.10.0",
+  "version": "0.11.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,6 +14,7 @@
   "dependencies": {
     "@astral-sh/ruff-wasm-web": "^0.16.2",
     "@tailwindcss/vite": "^4.2.2",
+    "dompurify": "^3.4.15",
     "html2canvas-pro": "^2.3.8",
     "peerjs": "^1.5.5",
     "prettier": "^3.9.6",
