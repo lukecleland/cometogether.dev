@@ -194,6 +194,12 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	const [cameraEnabled, setCameraEnabled] = useState(true);
 	const [mediaRetryKey, setMediaRetryKey] = useState(0);
 	const [mediaError, setMediaError] = useState<string | null>(null);
+	const [imageToast, setImageToast] = useState<{ message: string } | null>(null);
+	useEffect(() => {
+		if (!imageToast) return;
+		const timer = setTimeout(() => setImageToast(null), 10_000);
+		return () => clearTimeout(timer);
+	}, [imageToast]);
 	const [fixedPanels, setFixedPanels] = useState<Record<PanelId, PanelState>>(() => {
 		if (!savedRoom) return defaultFixedPanels();
 		// Snapshots written before per-peer participant persistence used `remote`
@@ -1787,9 +1793,12 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				initialFile: prepared.file,
 				dimensions: { width: prepared.width, height: prepared.height }
 			});
-			setMediaError(null);
+			setImageToast(null);
 		} catch (error) {
-			setMediaError(error instanceof Error ? error.message : 'The image could not be added.');
+			const isHeic = /\.hei[cf]$/i.test(file.name) || /^image\/hei[cf]/i.test(file.type);
+			setImageToast({ message: isHeic
+				? 'This HEIC image could not be opened. Try exporting it as JPEG or PNG.'
+				: error instanceof Error ? error.message : 'The image could not be added.' });
 		}
 	};
 
@@ -2573,6 +2582,18 @@ export function Session({ roomCode, isHost }: SessionProps) {
 					<span className="font-medium text-brand-200">Presenting</span>
 					<span className="text-zinc-400">{presentationFollowers.length} following</span>
 					<button onClick={stopPresenting} aria-label="Stop presenting" className="rounded-full bg-zinc-800 px-2.5 py-1 font-medium text-white hover:bg-zinc-700">Stop</button>
+				</div>
+			)}
+
+			{imageToast && (
+				<div data-canvas-chrome role="alert" aria-label="Image upload error"
+					className="fixed left-1/2 z-[1100] flex w-max max-w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 items-start gap-3 rounded-lg border border-amber-700 bg-zinc-950 px-3 py-2 text-xs text-amber-200 shadow-lg"
+					style={{ top: 'calc(3rem + env(safe-area-inset-top) + 0.5rem)' }}>
+					<p className="min-w-0 break-words">{imageToast.message}</p>
+					<button type="button" aria-label="Dismiss image error" onClick={() => setImageToast(null)}
+						className="shrink-0 rounded p-0.5 text-zinc-400 hover:bg-zinc-800 hover:text-white">
+						<svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true"><path strokeLinecap="round" d="m6 6 12 12M18 6 6 18" /></svg>
+					</button>
 				</div>
 			)}
 
