@@ -127,7 +127,8 @@ export type SyncMessage =
 	| { type: 'presentation-leave'; id: string }
 	| { type: 'presentation-view'; id: string; canvas: { x: number; y: number; scale: number } }
 	| { type: 'presentation-stop'; id: string }
-	| { type: 'cursor-move'; x: number; y: number; laser: boolean }
+	| { type: 'participant-name'; label: string }
+	| { type: 'cursor-move'; x: number; y: number; laser: boolean; label?: string }
 	| { type: 'cursor-leave' }
 	/** Announces a chunked file transfer and the panel it belongs to. */
 	| {
