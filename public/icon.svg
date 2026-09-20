@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" fill="#101014"/><g transform="translate(64 64) scale(3.84)">
-  <rect width="46" height="46" rx="10" fill="#D4ACFA" />
-  <rect y="54" width="46" height="46" rx="10" fill="#7048FA" />
-  <rect x="54" width="46" height="100" rx="10" fill="#A27AFA" />
+  <rect width="44" height="44" rx="1" fill="#D4ACFA" />
+  <rect y="56" width="44" height="44" rx="1" fill="#7048FA" />
+  <rect x="56" width="44" height="100" rx="1" fill="#A27AFA" />
 </g></svg>
