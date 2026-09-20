@@ -82,6 +82,7 @@ export type SyncMessage =
 	| { type: 'spawn-browser'; id: string; url?: string; state: PanelState }
 	| { type: 'spawn-image'; id: string; state: PanelState }
 	| { type: 'browser-load'; id: string; url: string }
+	| { type: 'browser-present'; id: string; active: boolean }
 	| {
 			type: 'spawn-audio';
 			id: string;
