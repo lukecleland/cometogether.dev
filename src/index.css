@@ -239,3 +239,31 @@ button:disabled {
     animation: none;
   }
 }
+
+/* A fixed word slot keeps the domain suffix and surrounding layout still. */
+.landing-brand {
+  font-size: clamp(1.25rem, 6.5vw, 1.875rem);
+  line-height: 1.25;
+}
+.brand-words {
+  display: inline-grid;
+  overflow: hidden;
+  vertical-align: bottom;
+  perspective: 300px;
+}
+.brand-word {
+  grid-area: 1 / 1;
+  text-align: right;
+  opacity: 0;
+  transform: translateY(100%) rotateX(-35deg);
+  animation: brand-word-shuffle 18.2s cubic-bezier(.22, 1, .36, 1) infinite;
+}
+@keyframes brand-word-shuffle {
+  0% { opacity: 0; transform: translateY(100%) rotateX(-35deg); }
+  2%, 12% { opacity: 1; transform: translateY(0) rotateX(0); }
+  14.2857%, 100% { opacity: 0; transform: translateY(-100%) rotateX(35deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-word { animation: none; opacity: 0; transform: none; }
+  .brand-word:first-child { opacity: 1; }
+}
