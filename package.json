@@ -16,6 +16,7 @@
     "@tailwindcss/vite": "^4.2.2",
     "dompurify": "^3.4.15",
     "html2canvas-pro": "^2.3.8",
+    "pdfjs-dist": "^6.3.289",
     "peerjs": "^1.5.5",
     "prettier": "^3.9.6",
     "prismjs": "^1.30.0",
@@ -40,6 +41,7 @@
     "globals": "^17.4.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.0",
-    "vite": "^8.0.4"
+    "vite": "^8.0.4",
+    "vite-plugin-static-copy": "^4.1.1"
   }
 }

@@ -55,6 +55,12 @@ between participants over WebRTC; PeerJS Cloud is used for signalling.
 - **Canvas recorder** — record the visible board, drawings, connectors and
   panels through an in-app compositor without a screen-share prompt; share
   clips and synchronize their playback
+- **PDFs** — drop files onto the canvas or choose **PDF** in the widget menu.
+  Pages fit the panel and Previous/Next navigation is shared with participants.
+  Files up to 50 MB are transferred to peers and retained locally, including for
+  late joiners. Room exports retain filenames and page numbers; use **Restore PDF**
+  when the original file is missing after import. Password-protected PDFs need an
+  unlocked copy. This viewer displays pages; it does not edit forms or annotations.
 - **Images and screenshots** — paste, drop or upload an image into a shared,
   resizable panel; large files are resized and compressed before transfer
 - **Video panels** — one independently movable panel per participant

@@ -5,7 +5,7 @@ import type { DawTrack } from "../utils/daw";
 export type PanelId = "local" | "remote";
 
 /** The type of a dynamically-spawned panel. */
-export type DynamicPanelType = "youtube" | "audio" | "browser" | "note" | "code" | "recorder" | "image" | "daw" | "whiteboard";
+export type DynamicPanelType = "youtube" | "audio" | "browser" | "note" | "code" | "recorder" | "image" | "daw" | "whiteboard" | "pdf";
 
 export interface CodeContent {
   text: string;
@@ -122,4 +122,5 @@ export interface DynamicPanel {
   playback?: PanelPlayback;
   initialUrl?: string;
   browserScroll?: BrowserScroll;
+  pdfPage?: number;
 }

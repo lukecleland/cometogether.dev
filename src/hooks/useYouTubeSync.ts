@@ -83,6 +83,8 @@ export type SyncMessage =
 	| { type: 'spawn-browser'; id: string; url?: string; state: PanelState }
 	| { type: 'spawn-whiteboard'; id: string; state: PanelState }
 	| { type: 'whiteboard-change'; id: string; change: BoardChange }
+	| { type: 'spawn-pdf'; id: string; state: PanelState }
+	| { type: 'pdf-page'; id: string; page: number }
 	| { type: 'spawn-image'; id: string; state: PanelState }
 	| { type: 'browser-load'; id: string; url: string }
 	| { type: 'browser-scroll'; id: string; url: string; position: number }

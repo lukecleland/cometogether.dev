@@ -1,3 +1,5 @@
+import { PdfWidget } from '../components/PdfWidget';
+import { isPdfFile, preparePdf, validPdfPage } from '../utils/pdf';
 import { BROWSER_ENABLED } from '../utils/features';
 import { normaliseBrowserUrl, validBrowserScroll } from "../utils/browserUrl";
 import { WhiteboardWidget } from "../components/WhiteboardWidget";
@@ -218,12 +220,13 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		initialVideoId: panel.initialVideoId,
 		initialUrl: panel.initialUrl,
 		browserScroll: panel.browserScroll,
+		pdfPage: panel.pdfPage,
 		note: panel.note,
 		code: panel.code,
 		whiteboard: panel.whiteboard,
 		dawTracks: panel.dawTracks ? normaliseDawTracks(panel.dawTracks) : undefined,
 		playback: panel.playback,
-		mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : undefined,
+		mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : panel.type === 'pdf' ? panel.pdfFileName : undefined,
 		recordingMetadata: panel.recordings,
 		recordings: []
 	})) ?? []);
@@ -243,6 +246,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	const [recorderStatuses, setRecorderStatuses] = useState<Record<string, RecordingStatus>>({});
 	const [widgetMenuOpen, setWidgetMenuOpen] = useState(false);
 	const widgetMenuRef = useRef<HTMLDivElement>(null);
+	const pdfInputRef = useRef<HTMLInputElement>(null);
 	const imageInputRef = useRef<HTMLInputElement>(null);
 	const roomBundleInputRef = useRef<HTMLInputElement>(null);
 	const [bundleNotice, setBundleNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
@@ -370,7 +374,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				const file = await loadRoomMedia(roomCode, persisted.id);
 				if (!cancelled && !ignoreLocalHydrationRef.current && file) setDynamicPanels(prev => prev.map(panel => panel.id === persisted.id ? { ...panel, initialFile: file } : panel));
 			}
-			if (persisted.type === 'image' && persisted.imageFileName) {
+			if ((persisted.type === 'image' && persisted.imageFileName) || (persisted.type === 'pdf' && persisted.pdfFileName)) {
 				const file = await loadRoomMedia(roomCode, persisted.id);
 				if (!cancelled && !ignoreLocalHydrationRef.current && file) setDynamicPanels(prev => prev.map(panel => panel.id === persisted.id ? { ...panel, initialFile: file } : panel));
 			}
@@ -406,12 +410,14 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				initialVideoId: panel.initialVideoId,
 				initialUrl: panel.initialUrl,
 				browserScroll: panel.browserScroll,
+				pdfPage: panel.pdfPage,
 				note: panel.note,
 				code: panel.code,
 				whiteboard: panel.whiteboard,
 				dawTracks: panel.dawTracks ? normaliseDawTracks(panel.dawTracks) : undefined,
 				audioFileName: panel.type === 'audio' ? panel.initialFile?.name ?? panel.mediaFileName ?? savedRoom?.panels.find(saved => saved.id === panel.id)?.audioFileName : undefined,
 				imageFileName: panel.type === 'image' ? panel.initialFile?.name ?? panel.mediaFileName ?? savedRoom?.panels.find(saved => saved.id === panel.id)?.imageFileName : undefined,
+				pdfFileName: panel.type === 'pdf' ? panel.initialFile?.name ?? panel.mediaFileName ?? savedRoom?.panels.find(saved => saved.id === panel.id)?.pdfFileName : undefined,
 				recordings: recordingMetadataFor(panel) ?? savedRoom?.panels.find(saved => saved.id === panel.id)?.recordings,
 				playback: panel.playback
 			})),
@@ -548,12 +554,13 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			initialVideoId: panel.initialVideoId,
 			initialUrl: panel.initialUrl,
 			browserScroll: panel.browserScroll,
+			pdfPage: panel.pdfPage,
 			note: panel.note,
 			code: panel.code,
 			whiteboard: panel.whiteboard,
 			dawTracks: panel.dawTracks ? normaliseDawTracks(panel.dawTracks) : undefined,
 			playback: panel.playback,
-			mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : undefined,
+			mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : panel.type === 'pdf' ? panel.pdfFileName : undefined,
 			recordingMetadata: panel.recordings,
 			recordings: []
 		})));
@@ -578,12 +585,13 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			initialVideoId: panel.initialVideoId,
 			initialUrl: panel.initialUrl,
 			browserScroll: panel.browserScroll,
+			pdfPage: panel.pdfPage,
 			note: panel.note,
 			code: panel.code,
 			whiteboard: panel.whiteboard,
 			dawTracks: panel.dawTracks ? normaliseDawTracks(panel.dawTracks) : undefined,
 			playback: panel.playback,
-			mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : undefined,
+			mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : panel.type === 'pdf' ? panel.pdfFileName : undefined,
 			recordingMetadata: panel.recordings,
 			recordings: []
 		}));
@@ -613,7 +621,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		// Bundles intentionally omit media bytes. If this browser still has files
 		// for the same room and panel ids, quietly reconnect them after restore.
 		void Promise.all(snapshot.panels.map(async panel => {
-			if ((panel.type === 'audio' && panel.audioFileName) || (panel.type === 'image' && panel.imageFileName)) {
+			if ((panel.type === 'audio' && panel.audioFileName) || (panel.type === 'image' && panel.imageFileName) || (panel.type === 'pdf' && panel.pdfFileName)) {
 				const file = await loadRoomMedia(roomCode, panel.id).catch(() => null);
 				if (file) setDynamicPanels(previous => previous.map(item => item.id === panel.id ? { ...item, initialFile: file } : item));
 			}
@@ -720,6 +728,10 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			setViewSuggestion({ from: msg.id, canvas: msg.canvas });
 			return;
 		}
+		if (msg.type === 'pdf-page') {
+			if (validPdfPage(msg.page)) setDynamicPanels(previous => previous.map(panel => panel.id === msg.id && panel.type === 'pdf' ? { ...panel, pdfPage: msg.page } : panel));
+			return;
+		}
 		if (msg.type === 'browser-load') {
 			const url = normaliseBrowserUrl(msg.url);
 			if (url) {
@@ -799,6 +811,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			]);
 		} else if (msg.type === 'spawn-whiteboard') {
 			setDynamicPanels(previous => previous.some(panel => panel.id === msg.id) ? previous : [...previous, { id: msg.id, type: 'whiteboard', state: denormalisePanel(msg.state) }]);
+		} else if (msg.type === 'spawn-pdf') {
+			setDynamicPanels(prev => prev.some(panel => panel.id === msg.id) ? prev : [...prev, { id: msg.id, type: 'pdf', state: denormalisePanel(msg.state) }]);
 		} else if (msg.type === 'spawn-image') {
 			setDynamicPanels(prev => [...prev, { id: msg.id, type: 'image', state: denormalisePanel(msg.state) }]);
 		} else if (msg.type === 'spawn-audio') {
@@ -1520,6 +1534,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			recorder: 720,
 			daw: 900,
 			image: 680,
+			pdf: 760,
 			position: 0
 		};
 
@@ -1598,7 +1613,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			const firstLine = text.split('\n')[0].trim();
 			if (kind === 'text' && firstLine) return firstLine.slice(0, 40);
 		}
-		const base = panel.type === 'whiteboard' ? 'Whiteboard' : panel.type === 'daw' ? 'DAW' : panel.type === 'youtube' ? 'YouTube' : panel.type === 'note' ? 'Note' : panel.type === 'browser' ? 'Browser' : panel.type === 'code' ? 'Code' : panel.type === 'recorder' ? 'Recorder' : panel.type === 'image' ? 'Image' : 'Audio';
+		const base = panel.type === 'pdf' ? 'PDF' : panel.type === 'whiteboard' ? 'Whiteboard' : panel.type === 'daw' ? 'DAW' : panel.type === 'youtube' ? 'YouTube' : panel.type === 'note' ? 'Note' : panel.type === 'browser' ? 'Browser' : panel.type === 'code' ? 'Code' : panel.type === 'recorder' ? 'Recorder' : panel.type === 'image' ? 'Image' : 'Audio';
 		const sameType = dynamicPanels.filter(p => p.type === panel.type);
 		if (sameType.length < 2) return base;
 		return `${base} ${sameType.findIndex(p => p.id === panel.id) + 1}`;
@@ -1780,7 +1795,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	// Spawn a new dynamic panel at the given screen position (screen coords → world coords).
 	// Pass fromRemote=true when applying a remote-initiated spawn (skips sync to avoid loops).
 	const spawnPanel = (
-		type: 'youtube' | 'audio' | 'browser' | 'note' | 'code' | 'recorder' | 'image' | 'daw' | 'whiteboard',
+		type: 'youtube' | 'audio' | 'browser' | 'note' | 'code' | 'recorder' | 'image' | 'daw' | 'whiteboard' | 'pdf',
 		screenX: number,
 		screenY: number,
 		extra?: { initialVideoId?: string; initialFile?: File; initialUrl?: string; note?: NoteContent; code?: CodeContent; dimensions?: { width: number; height: number } },
@@ -1791,8 +1806,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		const imageRatio = extra?.dimensions ? extra.dimensions.width / extra.dimensions.height : 4 / 3;
 		const imageWidth = imageRatio >= 1 ? 520 : Math.max(240, 420 * imageRatio);
 		const imageHeight = (imageRatio >= 1 ? Math.max(180, 520 / imageRatio) : 420) + 32;
-		const w = type === 'whiteboard' ? 720 : type === 'daw' ? 900 : type === 'image' ? imageWidth : type === 'browser' ? 560 : type === 'recorder' ? 600 : type === 'code' ? 520 : type === 'youtube' ? 320 : type === 'note' ? 300 : 300;
-		const h = type === 'whiteboard' ? 540 : type === 'daw' ? 480 : type === 'image' ? imageHeight : type === 'browser' ? 420 : type === 'recorder' ? 480 : type === 'code' ? 380 : type === 'youtube' ? 260 : type === 'note' ? 300 : 360;
+		const w = type === 'pdf' ? 560 : type === 'whiteboard' ? 720 : type === 'daw' ? 900 : type === 'image' ? imageWidth : type === 'browser' ? 560 : type === 'recorder' ? 600 : type === 'code' ? 520 : type === 'youtube' ? 320 : type === 'note' ? 300 : 300;
+		const h = type === 'pdf' ? 720 : type === 'whiteboard' ? 540 : type === 'daw' ? 480 : type === 'image' ? imageHeight : type === 'browser' ? 420 : type === 'recorder' ? 480 : type === 'code' ? 380 : type === 'youtube' ? 260 : type === 'note' ? 300 : 360;
 		const worldX = (screenX - tx) / scale - w / 2;
 		const worldY = (screenY - ty) / scale - h / 2;
 		const nextZ = ++topZRef.current;
@@ -1806,7 +1821,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			code: extra?.code
 		};
 		setDynamicPanels(prev => [...prev, { id, type, state, ...panelExtra }]);
-		const imageFile = type === 'image' ? extra?.initialFile : undefined;
+		const imageFile = (type === 'image' || type === 'pdf') ? extra?.initialFile : undefined;
 		if (imageFile) setPanelLabels(prev => ({ ...prev, [id]: imageFile.name }));
 		setDockedIds(prev => (prev.includes(id) ? prev : [...prev, id]));
 
@@ -1831,10 +1846,22 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				sendSync({ type: 'spawn-daw', id, state: normalisePanel(state) });
 			} else if (type === 'recorder') {
 				sendSync({ type: 'spawn-recorder', id, state: normalisePanel(state) });
-			} else if (type === 'image') {
-				sendSync({ type: 'spawn-image', id, state: normalisePanel(state) });
+			} else if (type === 'image' || type === 'pdf') {
+				sendSync({ type: type === 'pdf' ? 'spawn-pdf' : 'spawn-image', id, state: normalisePanel(state) });
 				if (extra?.initialFile) sendFileTo(id, extra.initialFile);
 			}
+		}
+	};
+
+	const addPdf = async (file: File, screenX: number, screenY: number, panelId?: string) => {
+		try {
+			const prepared = await preparePdf(file);
+			if (panelId) {
+				updateDynamicPanel(panelId, { initialFile: prepared, mediaFileName: prepared.name });
+				sendFileTo(panelId, prepared);
+			} else spawnPanel('pdf', screenX, screenY, { initialFile: prepared });
+		} catch (error) {
+			setImageToast({ id: crypto.randomUUID(), message: error instanceof Error ? error.message : 'The PDF could not be added.' });
 		}
 	};
 
@@ -1968,6 +1995,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			const { x, y } = pointerRef.current;
 			const px = x || window.innerWidth / 2;
 			const py = y || window.innerHeight / 2;
+			const pdfs = Array.from(e.clipboardData?.files ?? []).filter(isPdfFile);
+			if (pdfs.length) { e.preventDefault(); pdfs.forEach((file, index) => { void addPdf(file, px + index * 30, py + index * 30); }); return; }
 			const image = Array.from(e.clipboardData?.items ?? [])
 				.find(item => item.kind === 'file' && item.type.startsWith('image/'))
 				?.getAsFile();
@@ -2255,6 +2284,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			onDrop={e => {
 				e.preventDefault();
 				setBgDragOver(false);
+				const pdfs = Array.from(e.dataTransfer.files).filter(isPdfFile);
+				if (pdfs.length) { pdfs.forEach((file, index) => { void addPdf(file, e.clientX + index * 30, e.clientY + index * 30); }); return; }
 				const image = Array.from(e.dataTransfer.files).find(file => file.type.startsWith('image/'));
 				if (image) {
 					void addImage(image, e.clientX, e.clientY);
@@ -2276,6 +2307,10 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						});
 				}
 			}}>
+			<input ref={pdfInputRef} type="file" accept="application/pdf,.pdf" multiple className="hidden" onChange={event => {
+				Array.from(event.target.files ?? []).forEach((file, index) => { void addPdf(file, window.innerWidth / 2 + index * 30, window.innerHeight / 2 + index * 30); });
+				event.target.value = '';
+			}} />
 			<input
 				ref={imageInputRef}
 				type="file"
@@ -2375,6 +2410,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						className="grid w-full grid-cols-[1.25rem_1fr] items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-left text-xs font-medium text-zinc-300 hover:bg-zinc-700">
 						<svg className="h-4 w-4 text-brand-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="18" height="14" rx="2" /><path d="m8 21 4-4 4 4M7 12l3-4 3 3 4-4" /></svg><span>Whiteboard</span>
 					</button>
+					<button onClick={() => pdfInputRef.current?.click()} className="w-full text-left bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs font-medium px-3 py-2 rounded-lg" title="Add PDFs">PDF</button>
 					<button
 						onClick={() => imageInputRef.current?.click()}
 						className="grid w-full grid-cols-[1.25rem_1fr] items-center gap-1.5 text-left [&>:first-child]:justify-self-center bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 border border-zinc-700 text-zinc-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors"
@@ -2464,6 +2500,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 								className="w-full text-left px-2.5 py-2 text-xs text-violet-300 rounded-lg hover:bg-zinc-800 disabled:opacity-50">
 								{screenShare.sharing ? 'Stop sharing' : 'Share screen'}
 							</button>
+							<button onClick={() => { pdfInputRef.current?.click(); setWidgetMenuOpen(false); }} className="w-full text-left px-2.5 py-2 text-xs text-zinc-200 rounded-lg hover:bg-zinc-800" title="Add PDFs">PDF</button>
 							<button
 								onClick={() => {
 									imageInputRef.current?.click();
@@ -2642,7 +2679,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				</div>
 			)}
 
-			<Toast key={imageToast?.id} message={imageToast?.message} label="Image upload error" onDismiss={() => setImageToast(null)} />
+			<Toast key={imageToast?.id} message={imageToast?.message} label="File upload error" onDismiss={() => setImageToast(null)} />
 			<Toast message={error} label="Connection error" />
 			<Toast message={screenShare.error} label="Screen sharing error" />
 			<Toast message={mediaError} label="Camera or microphone error" onDismiss={() => setMediaError(null)}
@@ -2872,8 +2909,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						excludeFromRecording={panel.type === 'recorder'}
 						{...makeDynamicPanelHandlers(panel.id)}
 						onToggleDock={() => toggleDock(panel.id)}
-						minWidth={panel.type === 'whiteboard' ? 360 : panel.type === 'daw' ? 520 : panel.type === 'browser' ? 360 : panel.type === 'recorder' ? 420 : panel.type === 'code' ? 380 : panel.type === 'youtube' ? 280 : panel.type === 'image' ? 180 : 260}
-						minHeight={panel.type === 'whiteboard' ? 280 : panel.type === 'daw' ? 320 : panel.type === 'browser' ? 240 : panel.type === 'audio' ? 300 : panel.type === 'image' ? 140 : 60}
+						minWidth={panel.type === 'pdf' ? 300 : panel.type === 'whiteboard' ? 360 : panel.type === 'daw' ? 520 : panel.type === 'browser' ? 360 : panel.type === 'recorder' ? 420 : panel.type === 'code' ? 380 : panel.type === 'youtube' ? 280 : panel.type === 'image' ? 180 : 260}
+						minHeight={panel.type === 'pdf' ? 300 : panel.type === 'whiteboard' ? 280 : panel.type === 'daw' ? 320 : panel.type === 'browser' ? 240 : panel.type === 'audio' ? 300 : panel.type === 'image' ? 140 : 60}
 						scale={canvas.scale}>
 						{zoomTagHandle(panel.id, panelLabels[panel.id] ?? fallbackLabel(panel))}
 						{panel.type === 'whiteboard' ? (
@@ -2959,6 +2996,11 @@ export function Session({ roomCode, isHost }: SessionProps) {
 								docked={dockedIds.includes(panel.id)}
 								onToggleDock={() => toggleDock(panel.id)}
 							/>
+						) : panel.type === 'pdf' ? (
+							<PdfWidget file={panel.initialFile} title={customLabels[panel.id] ?? panel.initialFile?.name ?? panel.mediaFileName ?? 'PDF'} page={panel.pdfPage}
+								transferProgress={transferProgress[panel.id]} onClose={() => removePanel(panel.id)} docked={dockedIds.includes(panel.id)} onToggleDock={() => toggleDock(panel.id)}
+								onRestore={file => { void addPdf(file, 0, 0, panel.id); }}
+								onPageChange={page => { updateDynamicPanel(panel.id, { pdfPage: page }); sendSync({ type: 'pdf-page', id: panel.id, page }); }} />
 						) : panel.type === 'image' ? (
 							<ImageWidget
 								file={panel.initialFile}
