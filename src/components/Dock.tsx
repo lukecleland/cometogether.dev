@@ -128,7 +128,7 @@ function DockIcon({ type }: { type: DockEntry["type"] }) {
   if (type === "audio") {
     return (
       <svg
-        className="w-4 h-4 text-violet-400 shrink-0"
+        className="w-4 h-4 text-brand-400 shrink-0"
         viewBox="0 0 24 24"
         fill="currentColor"
       >
@@ -171,7 +171,7 @@ export function DockButton({
     <button
       onClick={onToggle}
       className={`no-drag transition-colors ${reserveMinimizeSlot ? "mr-5" : ""} ${
-        docked ? "text-violet-400 hover:text-violet-300" : "text-zinc-400 hover:text-white"
+        docked ? "text-brand-400 hover:text-brand-300" : "text-zinc-400 hover:text-white"
       }`}
       title={docked ? "Remove from dock" : "Add to dock"}
       aria-label={docked ? "Remove from dock" : "Add to dock"}
@@ -260,7 +260,7 @@ export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipan
           // ── Rename mode ──
           <div
             key={entry.id}
-            className="flex items-center gap-1.5 bg-zinc-800 border border-violet-500 rounded-xl pl-2 pr-1 py-1.5 shrink-0"
+            className="flex items-center gap-1.5 bg-zinc-800 border border-brand-500 rounded-xl pl-2 pr-1 py-1.5 shrink-0"
           >
             <DockIcon type={entry.type} />
             <input
@@ -286,7 +286,7 @@ export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipan
             key={entry.id}
             className={`group flex items-center gap-1 rounded-xl pl-2 pr-1 py-1.5 transition-colors shrink-0 border ${
               entry.pulsing
-                ? "dock-pulse bg-violet-950/60 border-violet-500"
+                ? "dock-pulse bg-brand-950/60 border-brand-500"
                 : "bg-zinc-800 hover:bg-zinc-700 border-zinc-700"
             }`}
           >
@@ -317,8 +317,8 @@ export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipan
               onClick={() => ping(entry.id)}
               className={`relative shrink-0 transition-colors ${
                 pinged.includes(entry.id)
-                  ? "text-violet-300"
-                  : "text-zinc-500 hover:text-violet-400"
+                  ? "text-brand-300"
+                  : "text-zinc-500 hover:text-brand-400"
               }`}
               title={`Ping — make ${entry.label} flash on their screen`}
               aria-label={`Ping ${entry.label}`}
@@ -347,7 +347,7 @@ export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipan
 
             <button
               onClick={() => startEditing(entry)}
-              className="text-zinc-500 hover:text-violet-400 transition-colors shrink-0"
+              className="text-zinc-500 hover:text-brand-400 transition-colors shrink-0"
               title="Rename"
               aria-label={`Rename ${entry.label}`}
             >

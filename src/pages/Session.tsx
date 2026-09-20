@@ -1,3 +1,4 @@
+import { BrandMark } from "../components/BrandMark";
 import { DawWidget } from "../components/DawWidget";
 import { mergeDawTrack, normaliseDawTracks } from "../utils/daw";
 import { acquireLocalMedia } from "../utils/localMedia";
@@ -1649,7 +1650,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				}}
 				title={`Tag ${label}`}
 				aria-label={`Tag ${label}`}
-				className="absolute top-0 left-0 z-30 flex items-center gap-1 rounded-md bg-violet-600/95 hover:bg-violet-500 text-white text-[11px] font-medium px-1.5 py-1 shadow-lg pointer-events-auto"
+				className="absolute top-0 left-0 z-30 flex items-center gap-1 rounded-md bg-brand-600/95 hover:bg-brand-500 text-white text-[11px] font-medium px-1.5 py-1 shadow-lg pointer-events-auto"
 				style={{
 					transform: `scale(${1 / canvas.scale})`,
 					transformOrigin: 'top left'
@@ -2225,8 +2226,9 @@ export function Session({ roomCode, isHost }: SessionProps) {
 					paddingBottom: '0.5rem'
 				}}>
 				<div className="flex items-center gap-2 sm:gap-3 min-w-0">
-					<div className="flex min-w-0 items-baseline gap-1.5">
-						<span className="text-white font-bold text-sm sm:text-base tracking-tight truncate">maketogether.dev</span>
+					<div className="flex min-w-0 items-center gap-1.5">
+						<BrandMark className="h-5 w-5" />
+						<span className="brand-wordmark text-white font-semibold text-sm sm:text-base tracking-tight truncate">maketogether.dev</span>
 						<span className="shrink-0 text-[9px] font-normal tabular-nums text-zinc-500" aria-label={`Version ${__APP_VERSION__}`} title={`Version ${__APP_VERSION__}`}>v{__APP_VERSION__}</span>
 					</div>
 					<span
@@ -2425,7 +2427,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				<button
 					onClick={presentingId ? stopPresenting : startPresenting}
 					disabled={!presentingId && participantCount < 2}
-					className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${presentingId ? 'border-violet-400 bg-violet-600 text-white hover:bg-violet-500' : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
+					className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${presentingId ? 'border-brand-400 bg-brand-600 text-white hover:bg-brand-500' : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
 					title={presentingId ? 'Stop presenting your viewport' : participantCount < 2 ? 'Invite someone before presenting' : 'Invite everyone to follow your viewport'}>
 					<svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
 						<path strokeLinecap="round" strokeLinejoin="round" d="M8 5h8a3 3 0 013 3v5a3 3 0 01-3 3h-3l-3.5 3v-3H8a3 3 0 01-3-3V8a3 3 0 013-3z" />
@@ -2496,45 +2498,45 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			)}
 
 			{viewSuggestion && (
-				<div className="fixed left-3 top-16 z-[1000] flex items-center gap-2 rounded-xl border border-violet-500/60 bg-zinc-900/95 p-2 shadow-xl backdrop-blur">
+				<div className="fixed left-3 top-16 z-[1000] flex items-center gap-2 rounded-xl border border-brand-500/60 bg-zinc-900/95 p-2 shadow-xl backdrop-blur">
 					<button
 						onClick={() => {
 							setCanvas({ ...viewSuggestion.canvas });
 							setViewSuggestion(null);
 						}}
-						className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500">
+						className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-500">
 						A participant suggested their view — switch
 					</button>
 					<button onClick={() => setViewSuggestion(null)} className="px-1 text-zinc-400 hover:text-white" title="Dismiss" aria-label="Dismiss view suggestion">×</button>
 				</div>
 			)}
 			{wbTool === 'connector' && (
-				<div className="pointer-events-none fixed left-1/2 top-28 z-[999] -translate-x-1/2 rounded-full border border-violet-500/60 bg-zinc-900/95 px-3 py-1.5 text-xs font-medium text-violet-100 shadow-lg">
+				<div className="pointer-events-none fixed left-1/2 top-28 z-[999] -translate-x-1/2 rounded-full border border-brand-500/60 bg-zinc-900/95 px-3 py-1.5 text-xs font-medium text-brand-100 shadow-lg">
 					{connectorStartId ? 'Select another panel to connect · select the first again to cancel' : 'Select the first panel to connect'}
 				</div>
 			)}
 
 			{presentationInvite && (
-				<div role="dialog" aria-label="Presentation invitation" className="fixed left-1/2 top-16 z-[1002] w-[min(26rem,calc(100vw-1.5rem))] -translate-x-1/2 rounded-xl border border-violet-500/60 bg-zinc-900/95 p-3 shadow-2xl backdrop-blur">
+				<div role="dialog" aria-label="Presentation invitation" className="fixed left-1/2 top-16 z-[1002] w-[min(26rem,calc(100vw-1.5rem))] -translate-x-1/2 rounded-xl border border-brand-500/60 bg-zinc-900/95 p-3 shadow-2xl backdrop-blur">
 					<p className="text-sm font-semibold text-white">A participant wants to present</p>
 					<p className="mt-1 text-xs leading-relaxed text-zinc-400">Accept to follow their canvas as they pan and zoom. You can stop following at any time.</p>
 					<div className="mt-3 flex justify-end gap-2">
 						<button onClick={() => setPresentationInvite(null)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800 hover:text-white">Decline</button>
-						<button onClick={acceptPresentation} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500">Follow presenter</button>
+						<button onClick={acceptPresentation} className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-500">Follow presenter</button>
 					</div>
 				</div>
 			)}
 
 			{following && (
-				<div className="fixed left-3 top-16 z-[1001] flex items-center gap-2 rounded-xl border border-violet-500/60 bg-zinc-900/95 px-3 py-2 shadow-xl backdrop-blur">
-					<span className="flex items-center gap-2 text-xs font-semibold text-violet-200"><span className="h-2 w-2 animate-pulse rounded-full bg-violet-400" />Following presenter</span>
+				<div className="fixed left-3 top-16 z-[1001] flex items-center gap-2 rounded-xl border border-brand-500/60 bg-zinc-900/95 px-3 py-2 shadow-xl backdrop-blur">
+					<span className="flex items-center gap-2 text-xs font-semibold text-brand-200"><span className="h-2 w-2 animate-pulse rounded-full bg-brand-400" />Following presenter</span>
 					<button onClick={stopFollowing} className="rounded-lg bg-zinc-800 px-2.5 py-1 text-xs font-medium text-white hover:bg-zinc-700">Stop following</button>
 				</div>
 			)}
 
 			{presentingId && (
-				<div className="fixed left-3 top-16 z-[1001] flex items-center gap-2 rounded-xl border border-violet-500/60 bg-zinc-900/95 px-3 py-2 text-xs shadow-xl backdrop-blur">
-					<span className="font-semibold text-violet-200">Presenting your view</span>
+				<div className="fixed left-3 top-16 z-[1001] flex items-center gap-2 rounded-xl border border-brand-500/60 bg-zinc-900/95 px-3 py-2 text-xs shadow-xl backdrop-blur">
+					<span className="font-semibold text-brand-200">Presenting your view</span>
 					<span className="text-zinc-500">{presentationFollowers.length} following</span>
 					<button onClick={stopPresenting} className="rounded-lg bg-zinc-800 px-2.5 py-1 font-medium text-white hover:bg-zinc-700">Stop</button>
 				</div>
@@ -2902,7 +2904,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						type="button"
 						onClick={() => selectConnectorPanel(panel.id)}
 						aria-label={`${connectorStartId ? 'Connect to' : 'Start connector from'} ${panelLabels[panel.id] ?? fallbackLabel(panel)}`}
-						className={`absolute rounded-xl border-2 transition-colors ${connectorStartId === panel.id ? 'border-violet-300 bg-violet-400/20' : 'border-violet-500/70 bg-violet-500/5 hover:bg-violet-500/20'}`}
+						className={`absolute rounded-xl border-2 transition-colors ${connectorStartId === panel.id ? 'border-brand-300 bg-brand-400/20' : 'border-brand-500/70 bg-brand-500/5 hover:bg-brand-500/20'}`}
 						style={{ left: panel.state.x, top: panel.state.y, width: panel.state.width, height: panel.state.height, zIndex: 10000 + panel.state.z, pointerEvents: 'auto' }}
 					/>
 				))}

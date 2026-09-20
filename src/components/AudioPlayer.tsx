@@ -365,7 +365,7 @@ export function AudioPlayer({
       <div className="drag-handle flex items-center justify-between px-3 py-2 bg-zinc-800 cursor-grab active:cursor-grabbing select-none shrink-0">
         <div className="flex items-center gap-2">
           <svg
-            className="w-4 h-4 text-violet-400"
+            className="w-4 h-4 text-brand-400"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -414,7 +414,7 @@ export function AudioPlayer({
               <p className="text-xs text-zinc-400">Receiving track…</p>
               <div className="w-full h-1.5 bg-zinc-700 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-violet-500 transition-[width] duration-150"
+                  className="h-full bg-brand-500 transition-[width] duration-150"
                   style={{ width: `${Math.round(transferProgress * 100)}%` }}
                 />
               </div>
@@ -427,7 +427,7 @@ export function AudioPlayer({
             <label
               className={`flex flex-col items-center justify-center flex-1 rounded-xl border-2 border-dashed transition-colors cursor-pointer select-none ${
                 isDragOver
-                  ? "border-violet-500 bg-violet-500/10"
+                  ? "border-brand-500 bg-brand-500/10"
                   : "border-zinc-700 hover:border-zinc-500"
               }`}
               onDragOver={handleDragOver}
@@ -744,7 +744,7 @@ export function AudioPlayer({
                 <div className="relative flex-1 h-1.5 group">
                   <div className="absolute inset-0 bg-zinc-700 rounded-full" />
                   <div
-                    className="absolute inset-y-0 left-0 bg-violet-500 rounded-full pointer-events-none"
+                    className="absolute inset-y-0 left-0 bg-brand-500 rounded-full pointer-events-none"
                     style={{ width: `${progress}%` }}
                   />
                   <input

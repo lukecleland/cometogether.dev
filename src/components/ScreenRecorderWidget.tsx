@@ -348,7 +348,7 @@ export function ScreenRecorderWidget({
           {clips.map(clip => (
             <div key={clip.id} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${selectedId === clip.id ? "bg-zinc-800" : "hover:bg-zinc-900"}`}>
               <button onClick={() => selectClip(clip)} className="min-w-0 flex-1 truncate text-left text-xs text-zinc-300">{clip.name}</button>
-              <a href={urlFor(clip)} download={clip.name} className="text-[11px] font-medium text-violet-400 hover:text-violet-300">Download</a>
+              <a href={urlFor(clip)} download={clip.name} className="text-[11px] font-medium text-brand-400 hover:text-brand-300">Download</a>
             </div>
           ))}
         </div>

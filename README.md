@@ -373,3 +373,23 @@ for breaking changes once stable at `1.0.0`. During `0.x` development, use minor
 bumps for breaking changes. Bump the version once per release with
 `npm version patch --no-git-tag-version` (or `minor` / `major`), and commit both
 `package.json` and `package-lock.json`. Rebuild to display the new version.
+
+## Brand assets
+
+The logo has two rounded tiles on the left and a tall tile on the right:
+
+- Lilac: `#D4ACFA` (upper-left tile)
+- Violet: `#7048FA` (lower-left tile and primary actions)
+- Mixed lavender: `#A27AFA` (right tile, the 50/50 RGB midpoint)
+
+All three are solid fills. `public/brand-mark.svg` is the source artwork;
+`BrandMark` renders it in the landing page and session header. The wordmark uses
+self-hosted Outfit (SIL Open Font License in `public/fonts/OFL-Outfit.txt`) as a
+production match for the concept lettering. Brand accent shades are defined by
+`--color-brand-*` in `src/index.css`; activity icons retain their existing colors.
+
+Run `npm run icons:generate` after changing the mark. It regenerates the SVG
+favicon, 16/32px PNG favicons, multi-resolution ICO, 180px Apple touch icon,
+192/512px app icons, and a maskable 512px icon with safe-zone padding. Commit
+both the source and generated files. Update the `tiles-1` asset revision in
+`index.html` and `public/manifest.webmanifest` when replacing cached icons.
