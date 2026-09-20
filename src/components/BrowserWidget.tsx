@@ -1,3 +1,4 @@
+import { BROWSER_ENABLED } from '../utils/features';
 import { useState } from "react";
 import { DockButton } from "./Dock";
 import { WikipediaReader } from "./WikipediaReader";
@@ -59,7 +60,11 @@ export function BrowserWidget({
         </div>
       </div>
 
-      {(
+      {!BROWSER_ENABLED ? (
+        <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-zinc-400">
+          Mini-browser is disabled. Use Share screen to browse together.
+        </div>
+      ) : (
         <>
           <div className="flex gap-2 px-2 py-2 bg-zinc-900 shrink-0">
             <input
