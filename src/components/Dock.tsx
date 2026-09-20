@@ -238,7 +238,10 @@ export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipan
   return (
     <div
       data-canvas-chrome
-      className="fixed left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-zinc-900/90 backdrop-blur border border-zinc-700 rounded-2xl px-2 py-2 shadow-xl max-w-[calc(100vw-2rem)] overflow-x-auto"
+      data-dock
+      role="navigation"
+      aria-label="Canvas dock"
+      className="fixed left-1/2 -translate-x-1/2 grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-1 bg-zinc-900/90 backdrop-blur border border-zinc-700 rounded-xl p-1.5 shadow-xl w-[40rem] max-w-[calc(100vw-2rem)] max-h-[40dvh] overflow-y-auto overflow-x-hidden"
       style={{
         zIndex: 999,
         bottom: "calc(1rem + env(safe-area-inset-bottom))",
@@ -246,7 +249,7 @@ export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipan
     >
       <button
         onClick={onShowAll}
-        className="flex items-center gap-1.5 shrink-0 rounded-xl border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white"
+        className="flex min-w-0 min-h-8 items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white"
         title="Zoom to fit all canvas content"
         aria-label="Show all canvas content"
       >
@@ -260,7 +263,7 @@ export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipan
           // ── Rename mode ──
           <div
             key={entry.id}
-            className="flex items-center gap-1.5 bg-zinc-800 border border-brand-500 rounded-xl pl-2 pr-1 py-1.5 shrink-0"
+            className="flex min-w-0 min-h-8 items-center gap-1 bg-zinc-800 border border-brand-500 rounded-lg px-1.5 py-1"
           >
             <DockIcon type={entry.type} />
             <input
@@ -278,13 +281,13 @@ export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipan
               aria-label="Rename dock item"
               autoFocus
               spellCheck={false}
-              className="bg-transparent text-xs font-medium text-white placeholder:text-zinc-500 outline-none w-[10rem]"
+              className="bg-transparent text-xs font-medium text-white placeholder:text-zinc-500 outline-none min-w-0 w-full"
             />
           </div>
         ) : (
           <div
             key={entry.id}
-            className={`group flex items-center gap-1 rounded-xl pl-2 pr-1 py-1.5 transition-colors shrink-0 border ${
+            className={`group flex min-w-0 min-h-8 items-center gap-0.5 rounded-lg pl-1.5 pr-1 py-1 transition-colors border ${
               entry.pulsing
                 ? "dock-pulse bg-brand-950/60 border-brand-500"
                 : "bg-zinc-800 hover:bg-zinc-700 border-zinc-700"
@@ -298,7 +301,7 @@ export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipan
                   onParticipantDoubleClick(entry);
                 }
               }}
-              className={`flex min-w-0 items-center gap-1.5 transition-opacity ${entry.minimized ? "opacity-80" : "opacity-100"}`}
+              className={`flex min-w-0 flex-1 items-center gap-1 transition-opacity ${entry.minimized ? "opacity-80" : "opacity-100"}`}
               title={
                 entry.pulsing
                   ? `Go to ${entry.label} — just tagged by the other person`
@@ -308,7 +311,7 @@ export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipan
               <DockIcon type={entry.type} />
               {/* Titles and filenames can be long — truncate; the full text
                   is available via the button's title tooltip. */}
-              <span className="text-xs font-medium text-zinc-300 truncate max-w-[10rem]">
+              <span className="text-[11px] font-medium text-zinc-300 truncate">
                 {entry.label}
               </span>
             </button>
