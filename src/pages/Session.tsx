@@ -1,3 +1,4 @@
+import { useScreenShare } from "../hooks/useScreenShare";
 import { BrandMark } from "../components/BrandMark";
 import { DawWidget } from "../components/DawWidget";
 import { mergeDawTrack, normaliseDawTracks } from "../utils/daw";
@@ -441,6 +442,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		isHost,
 		localStream
 	});
+	const screenShare = useScreenShare(localStream, replaceVideoTrack);
 	dataConnectionRef.current = dataConnection;
 
 	useEffect(() => {
@@ -2282,6 +2284,15 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				{/* Add media buttons (desktop rail) */}
 				<div className="fixed right-3 z-[999] hidden max-h-[calc(100vh-5rem)] w-32 shrink-0 flex-col items-stretch gap-1.5 overflow-y-auto lg:flex" style={{ top: 'calc(3rem + env(safe-area-inset-top) + 0.75rem)' }}>
 					<button
+						onClick={() => void screenShare.toggle()}
+						disabled={screenShare.busy || !localStream}
+						aria-pressed={screenShare.sharing}
+						title={screenShare.sharing ? 'Stop sharing your screen' : 'Share your screen with participants'}
+						className="grid w-full grid-cols-[1.25rem_1fr] items-center gap-1.5 text-left [&>:first-child]:justify-self-center bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-violet-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors disabled:opacity-50">
+						<svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="18" height="14" rx="2" /><path d="M8 21h8M12 17v4M12 13V7m-3 3 3-3 3 3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+						<span>{screenShare.busy ? 'Starting…' : screenShare.sharing ? 'Stop sharing' : 'Share screen'}</span>
+					</button>
+					<button
 						onClick={() => imageInputRef.current?.click()}
 						className="grid w-full grid-cols-[1.25rem_1fr] items-center gap-1.5 text-left [&>:first-child]:justify-self-center bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 border border-zinc-700 text-zinc-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors"
 						title="Add an image">
@@ -2364,6 +2375,11 @@ export function Session({ roomCode, isHost }: SessionProps) {
 					</button>
 					{widgetMenuOpen && (
 						<div className="absolute right-0 mt-2 w-40 bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-xl p-1.5 shadow-xl z-50">
+							<button disabled={screenShare.busy || !localStream} aria-pressed={screenShare.sharing}
+								onClick={() => { void screenShare.toggle(); setWidgetMenuOpen(false); }}
+								className="w-full text-left px-2.5 py-2 text-xs text-violet-300 rounded-lg hover:bg-zinc-800 disabled:opacity-50">
+								{screenShare.sharing ? 'Stop sharing' : 'Share screen'}
+							</button>
 							<button
 								onClick={() => {
 									imageInputRef.current?.click();
@@ -2551,6 +2567,9 @@ export function Session({ roomCode, isHost }: SessionProps) {
 					{error}
 				</div>
 			)}
+			{screenShare.error && (
+				<div role="alert" className="absolute left-4 right-4 z-50 rounded-xl border border-amber-700 bg-zinc-950 px-4 py-2 text-sm text-amber-200" style={{ top: 'calc(6rem + env(safe-area-inset-top))' }}>{screenShare.error}</div>
+			)}
 			{(mediaError || mediaStatus) && !error && (
 				<div
 					className="absolute left-4 right-4 z-50 bg-amber-950/60 border border-amber-700 rounded-xl px-4 py-2.5 text-amber-200 text-sm"
@@ -2726,7 +2745,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						{zoomTagHandle('local', 'You')}
 						{/* No onToggleDock: participants are permanently docked, so a
 						    bookmark toggle here would be a button that does nothing */}
-						<VideoPanel stream={localStream} label={customLabels.local ?? 'You'} muted docked={dockedIds.includes('local')} localControls microphoneEnabled={microphoneEnabled} cameraEnabled={cameraEnabled} onToggleMicrophone={toggleMicrophone} onToggleCamera={() => void toggleCamera()} onMinimize={() => minimizePanel('local')} />
+						<VideoPanel stream={screenShare.sharing ? screenShare.preview : localStream} label={screenShare.sharing ? "Your screen" : customLabels.local ?? 'You'} muted docked={dockedIds.includes('local')} localControls microphoneEnabled={microphoneEnabled} cameraEnabled={cameraEnabled} onToggleMicrophone={toggleMicrophone} cameraDisabled={screenShare.sharing || screenShare.busy} onToggleCamera={() => void toggleCamera()} onMinimize={() => minimizePanel('local')} />
 					</DraggablePanel>
 				)}
 

@@ -419,3 +419,7 @@ favicon, 16/32px PNG favicons, multi-resolution ICO, 180px Apple touch icon,
 192/512px app icons, and a maskable 512px icon with safe-zone padding. Commit
 both the source and generated files. Update the `tiles-1` asset revision in
 `index.html` and `public/manifest.webmanifest` when replacing cached icons.
+
+### Screen sharing
+
+Choose **Share screen** in the right-hand controls (or the mobile **Add widget** menu) to share a screen, window, or browser tab with participants. It temporarily replaces your camera video while keeping your microphone. **Stop sharing**, or the browser’s stop control, restores your camera. System/tab audio is not included.
