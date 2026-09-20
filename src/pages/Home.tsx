@@ -1,3 +1,4 @@
+import { Toast } from '../components/Toast';
 import { BrandMark } from "../components/BrandMark";
 import { useState } from "react";
 import { generateCode, getCodeFromURL, setCodeInURL } from "../utils/roomCode";
@@ -83,9 +84,7 @@ export function Home({ onStart }: HomeProps) {
               spellCheck={false}
               autoCapitalize="characters"
             />
-            {joinError && (
-              <p className="text-red-400 text-xs pl-1">{joinError}</p>
-            )}
+            <Toast message={joinError} label="Session code error" onDismiss={() => setJoinError('')} />
             <button
               onClick={handleJoin}
               className="w-full bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 border border-zinc-700 text-zinc-200 font-semibold py-3.5 px-5 rounded-2xl transition-colors text-sm"
