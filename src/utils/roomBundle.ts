@@ -103,7 +103,7 @@ export function parseRoomBundle(source: string): RoomSnapshot {
     throw new Error("That file is not valid JSON.");
   }
   if (!isObject(parsed) || parsed.format !== BUNDLE_FORMAT || parsed.version !== BUNDLE_VERSION) {
-    throw new Error("That is not a supported maketogether.dev room bundle.");
+    throw new Error("That is not a supported maketogether room bundle.");
   }
   if (!isSnapshot(parsed.snapshot)) {
     throw new Error(`This bundle is damaged or uses an unsupported room-state version (expected ${ROOM_STATE_VERSION}).`);

@@ -1,4 +1,4 @@
-# maketogether.dev
+# maketogether
 
 A live peer-to-peer workspace for video chat, shared media, drawing and music
 collaboration. Create a room, share its link and work together without an

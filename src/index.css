@@ -265,7 +265,7 @@ button:disabled {
   }
 }
 
-/* A fixed word slot keeps the domain suffix and surrounding layout still. */
+/* A fixed word slot keeps the wordmark and surrounding layout still. */
 .landing-brand {
   font-size: clamp(1.25rem, 6.5vw, 1.875rem);
   line-height: 1.25;
@@ -281,12 +281,19 @@ button:disabled {
   text-align: right;
   opacity: 0;
   transform: translateY(100%) rotateX(-35deg);
-  animation: brand-word-shuffle 23.4s cubic-bezier(.22, 1, .36, 1) infinite;
+  animation: brand-word-shuffle 25.22s cubic-bezier(.22, 1, .36, 1) infinite;
+}
+/* Keep the same transitions; make holds for 3.64s, other words for 1.82s. */
+.brand-word:first-child { animation-name: brand-make-shuffle; }
+@keyframes brand-make-shuffle {
+  0% { opacity: 0; transform: translateY(100%) rotateX(-35deg); }
+  1.443299%, 15.876289% { opacity: 1; transform: translateY(0) rotateX(0); }
+  17.525773%, 100% { opacity: 0; transform: translateY(-100%) rotateX(35deg); }
 }
 @keyframes brand-word-shuffle {
   0% { opacity: 0; transform: translateY(100%) rotateX(-35deg); }
-  1.5556%, 9.3333% { opacity: 1; transform: translateY(0) rotateX(0); }
-  11.1111%, 100% { opacity: 0; transform: translateY(-100%) rotateX(35deg); }
+  1.443299%, 8.659794% { opacity: 1; transform: translateY(0) rotateX(0); }
+  10.309278%, 100% { opacity: 0; transform: translateY(-100%) rotateX(35deg); }
 }
 @media (prefers-reduced-motion: reduce) {
   .brand-word { animation: none; opacity: 0; transform: none; }

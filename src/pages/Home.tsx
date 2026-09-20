@@ -32,16 +32,16 @@ export function Home({ onStart }: HomeProps) {
       <div className="w-full max-w-sm">
         {/* Logo / title */}
         <div className="text-center mb-10">
-          <BrandMark className="mx-auto mb-5 h-16 w-16" />
+          <BrandMark rounded className="mx-auto mb-5 h-16 w-16" />
           <h1 className="landing-brand brand-wordmark font-semibold text-white tracking-tight">
-            <span className="sr-only">maketogether.dev</span>
+            <span className="sr-only">maketogether</span>
             <span aria-hidden="true" className="inline-flex items-baseline">
               <span className="brand-words text-brand-300">
                 {["make", "watch", "create", "record", "jam", "learn", "stop", "collaborate", "listen"].map((word, index) => (
-                  <span key={word} className="brand-word" style={{ animationDelay: `${index * 2.6 - 0.4}s` }}>{word}</span>
+                  <span key={word} className="brand-word" style={{ animationDelay: `${index * 2.6 + (index > 0 ? 1.82 : 0) - 0.4}s` }}>{word}</span>
                 ))}
               </span>
-              <span>together.dev</span>
+              <span>together</span>
             </span>
           </h1>
           <p className="text-zinc-400 mt-2 text-sm">
