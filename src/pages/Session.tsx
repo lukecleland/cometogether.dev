@@ -6,7 +6,7 @@ import { acquireLocalMedia } from "../utils/localMedia";
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 /**
- * Session — the top-level coordinator for an active maketogether.dev session.
+ * Session — the top-level coordinator for an active maketogether session.
  *
  * ## Responsibilities
  * - Acquires the local camera/mic stream via `getUserMedia`
@@ -1033,7 +1033,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		const url = URL.createObjectURL(blob);
 		const link = document.createElement('a');
 		link.href = url;
-		link.download = `maketogether.dev-${roomCode.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.json`;
+		link.download = `maketogether-${roomCode.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.json`;
 		document.body.appendChild(link);
 		link.click();
 		link.remove();
@@ -2230,7 +2230,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				<div className="flex items-center gap-2 sm:gap-3 min-w-0">
 					<div className="flex min-w-0 items-center gap-1.5">
 						<BrandMark className="h-5 w-5" />
-						<span className="brand-wordmark text-white font-semibold text-sm sm:text-base tracking-tight truncate">maketogether.dev</span>
+						<span className="brand-wordmark text-white font-semibold text-sm sm:text-base tracking-tight truncate">maketogether</span>
 						<span className="shrink-0 text-[9px] font-normal tabular-nums text-zinc-500" aria-label={`Version ${__APP_VERSION__}`} title={`Version ${__APP_VERSION__}`}>v{__APP_VERSION__}</span>
 					</div>
 					<span

@@ -1,6 +1,6 @@
 {
-  "name": "maketogether.dev",
-  "short_name": "maketogether.dev",
+  "name": "maketogether",
+  "short_name": "maketogether",
   "description": "Video call and a shared infinite canvas \u2014 watch, draw and jam together.",
   "start_url": "/",
   "scope": "/",
