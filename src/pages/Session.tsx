@@ -546,9 +546,10 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		})));
 		setPositionTags(snapshot.positionTags.map(tag => ({ ...tag })));
 		setConnectors(snapshot.connectors?.map(connector => ({ ...connector })) ?? []);
-		setDockedIds(snapshot.dockedIds);
+		setDockedIds(previous => [...new Set([...snapshot.dockedIds, ...previous.filter(id => id === 'local')])]);
 		setPanelLabels(snapshot.panelLabels);
-		setCustomLabels(snapshot.customLabels);
+		// Joining state must not erase a name this participant already chose.
+		setCustomLabels(previous => ({ ...snapshot.customLabels, ...(previous.local !== undefined ? { local: previous.local } : {}) }));
 		setCanvas({ ...snapshot.canvas });
 		whiteboardRef.current?.replaceItems(snapshot.drawings);
 		// The normal persistence effect writes the merged local perspective. Do
@@ -634,6 +635,19 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			if (following?.id === msg.id && following.presenterPeerId === sourcePeerId) setFollowing(null);
 			if (presentationInvite?.id === msg.id && presentationInvite.presenterPeerId === sourcePeerId) setPresentationInvite(null);
 			return;
+		}
+		// A participant's cursor identity belongs to its mesh sender, regardless
+		// of panel perspective or whether a dock rename arrived before joining.
+		if (sourcePeerId && (msg.type === 'participant-name' || msg.type === 'cursor-move') && typeof msg.label === 'string') {
+			const id = remotePanelId(sourcePeerId);
+			const label = msg.label;
+			setCustomLabels(previous => {
+				if ((previous[id] ?? '') === label) return previous;
+				const next = { ...previous };
+				if (label) next[id] = label;
+				else delete next[id];
+				return next;
+			});
 		}
 		if (msg.type === 'cursor-move') {
 			if (!sourcePeerId) return;
@@ -896,6 +910,15 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	});
 	sendSyncRef.current = sendSync;
 
+	const localDisplayName = customLabels.local ?? '';
+	useEffect(() => {
+		if (status !== 'connected') return;
+		// Announce changes even when the pointer is stationary, and reannounce
+		// when peers connect so a name chosen beforehand is not lost.
+		sendSync({ type: 'participant-name', label: localDisplayName });
+	}, [localDisplayName, participantCount, sendSync, status]);
+
+
 	const startPresenting = useCallback(() => {
 		if (participantCount < 2) return;
 		const id = crypto.randomUUID();
@@ -965,7 +988,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		const current = canvasStateRef.current;
 		const x = (clientX - current.x) / current.scale;
 		const y = (clientY - current.y) / current.scale;
-		sendSync({ type: 'cursor-move', x, y, laser: laserEnabled });
+		sendSync({ type: 'cursor-move', x, y, laser: laserEnabled, label: localDisplayName });
 		if (laserEnabled) {
 			setLocalLaserPoints(previous => [...previous.filter(point => point.expiresAt > now), { id: crypto.randomUUID(), x, y, expiresAt: now + 900 }].slice(-32));
 		}
