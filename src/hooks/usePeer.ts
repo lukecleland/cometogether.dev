@@ -161,18 +161,19 @@ function identifyPeerMessage(
   sourcePeerId: string,
   localPeerId: string,
 ): unknown {
-  if (typeof data !== "object" || data === null || !("id" in data)) return data;
-  const message = data as { id?: unknown };
-  if (message.id === "local") {
-    return { ...data, id: `remote-peer:${sourcePeerId}` };
+  if (typeof data !== "object" || data === null) return data;
+  const panelId = (id: string) => id === "local"
+    ? `remote-peer:${sourcePeerId}`
+    : id === `remote-peer:${localPeerId}` ? "local" : id;
+  // Snapshot keys need the same receiver perspective as live dock messages.
+  const message = data as { id?: unknown; type?: string; snapshot?: { dockedIds: string[]; customLabels: Record<string, string> } };
+  if (message.type === "room-state-snapshot" && message.snapshot) {
+    return { ...data, snapshot: { ...message.snapshot,
+      dockedIds: message.snapshot.dockedIds.map(panelId),
+      customLabels: Object.fromEntries(Object.entries(message.snapshot.customLabels).map(([id, label]) => [panelId(id), label])),
+    } };
   }
-  if (
-    typeof message.id === "string" &&
-    message.id === `remote-peer:${localPeerId}`
-  ) {
-    return { ...data, id: "local" };
-  }
-  return data;
+  return typeof message.id === "string" ? { ...data, id: panelId(message.id) } : data;
 }
 
 function configuredIceServers(): RTCIceServer[] {

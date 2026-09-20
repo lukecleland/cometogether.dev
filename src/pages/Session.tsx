@@ -161,15 +161,6 @@ function defaultFixedPanels(): Record<PanelId, PanelState> {
 	};
 }
 
-// The two fixed video panels are mirrored between peers: whoever sends "local"
-// means the panel the *receiver* sees as "remote". Dynamic panel ids are shared
-// verbatim and pass straight through.
-function swapFixedId(id: string): string {
-	if (id === 'local') return 'remote';
-	if (id === 'remote') return 'local';
-	return id;
-}
-
 const REMOTE_PANEL_PREFIX = 'remote-peer:';
 
 function remotePanelId(peerId: string): string {
@@ -555,9 +546,9 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		})));
 		setPositionTags(snapshot.positionTags.map(tag => ({ ...tag })));
 		setConnectors(snapshot.connectors?.map(connector => ({ ...connector })) ?? []);
-		setDockedIds(snapshot.dockedIds.map(swapFixedId));
+		setDockedIds(snapshot.dockedIds);
 		setPanelLabels(snapshot.panelLabels);
-		setCustomLabels(Object.fromEntries(Object.entries(snapshot.customLabels).map(([id, label]) => [swapFixedId(id), label])));
+		setCustomLabels(snapshot.customLabels);
 		setCanvas({ ...snapshot.canvas });
 		whiteboardRef.current?.replaceItems(snapshot.drawings);
 		// The normal persistence effect writes the merged local perspective. Do
@@ -819,8 +810,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			setPositionTags(prev => prev.filter(tag => tag.id !== msg.id));
 			forgetPanel(msg.id);
 		} else if (msg.type === 'dock-tag') {
-			// Same perspective swap as panel-update: their "You" is our "Guest"
-			const id = swapFixedId(msg.id);
+			// The mesh has already resolved participant IDs for this receiver.
+			const id = msg.id;
 			setDockedIds(prev => (prev.includes(id) ? prev : [...prev, id]));
 			// Only custom names travel; automatic labels are derived identically
 			// on both sides, and for video panels the derived name is the
@@ -828,13 +819,13 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			if (msg.label) setCustomLabels(prev => ({ ...prev, [id]: msg.label as string }));
 			startPulse(id);
 		} else if (msg.type === 'dock-ping') {
-			const id = swapFixedId(msg.id);
+			const id = msg.id;
 			// A ping is an explicit "look here", so it re-adds a bookmark the
 			// receiver had dismissed rather than failing silently on their side.
 			setDockedIds(prev => (prev.includes(id) ? prev : [...prev, id]));
 			startPulse(id);
 		} else if (msg.type === 'dock-rename') {
-			const id = swapFixedId(msg.id);
+			const id = msg.id;
 			setCustomLabels(prev => {
 				if (!msg.label) {
 					if (!(id in prev)) return prev;
@@ -2548,17 +2539,17 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			)}
 
 			{following && (
-				<div className="fixed left-3 top-16 z-[1001] flex items-center gap-2 rounded-xl border border-brand-500/60 bg-zinc-900/95 px-3 py-2 shadow-xl backdrop-blur">
-					<span className="flex items-center gap-2 text-xs font-semibold text-brand-200"><span className="h-2 w-2 animate-pulse rounded-full bg-brand-400" />Following presenter</span>
-					<button onClick={stopFollowing} className="rounded-lg bg-zinc-800 px-2.5 py-1 text-xs font-medium text-white hover:bg-zinc-700">Stop following</button>
+				<div aria-label="Presentation status" className="fixed left-1/2 z-[1001] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-brand-500/40 bg-zinc-900/95 py-1 pl-3 pr-1 text-[11px] leading-4 shadow-lg backdrop-blur" style={{ top: 'calc(3rem + env(safe-area-inset-top) + 0.5rem)' }}>
+					<span className="flex items-center gap-1.5 font-medium text-brand-200"><span className="h-1.5 w-1.5 rounded-full bg-brand-400" />Following</span>
+					<button onClick={stopFollowing} aria-label="Stop following" className="rounded-full bg-zinc-800 px-2.5 py-1 font-medium text-white hover:bg-zinc-700">Stop</button>
 				</div>
 			)}
 
 			{presentingId && (
-				<div className="fixed left-3 top-16 z-[1001] flex items-center gap-2 rounded-xl border border-brand-500/60 bg-zinc-900/95 px-3 py-2 text-xs shadow-xl backdrop-blur">
-					<span className="font-semibold text-brand-200">Presenting your view</span>
-					<span className="text-zinc-500">{presentationFollowers.length} following</span>
-					<button onClick={stopPresenting} className="rounded-lg bg-zinc-800 px-2.5 py-1 font-medium text-white hover:bg-zinc-700">Stop</button>
+				<div aria-label="Presentation status" className="fixed left-1/2 z-[1001] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-brand-500/40 bg-zinc-900/95 py-1 pl-3 pr-1 text-[11px] leading-4 shadow-lg backdrop-blur" style={{ top: 'calc(3rem + env(safe-area-inset-top) + 0.5rem)' }}>
+					<span className="font-medium text-brand-200">Presenting</span>
+					<span className="text-zinc-400">{presentationFollowers.length} following</span>
+					<button onClick={stopPresenting} aria-label="Stop presenting" className="rounded-full bg-zinc-800 px-2.5 py-1 font-medium text-white hover:bg-zinc-700">Stop</button>
 				</div>
 			)}
 
