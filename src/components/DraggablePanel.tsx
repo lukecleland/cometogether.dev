@@ -1,3 +1,4 @@
+import { useMovementSync } from "../hooks/useMovementSync";
 import { useEffect, useRef } from "react";
 import Draggable, {
   type DraggableEvent,
@@ -19,7 +20,7 @@ import type { PanelState } from "../types/panels";
  * the panel boundary quickly.
  *
  * ## Sync throttle
- * Both drag and resize schedule `onSyncUpdate` via a 50 ms debounce (~20 fps)
+ * Both drag and resize schedule `onSyncUpdate` at most once per 16 ms (~60 fps)
  * to avoid flooding the data channel. The final position is always flushed
  * immediately on drag/resize stop.
  *
@@ -139,15 +140,8 @@ export function DraggablePanel({
     stateRef.current = state;
   }, [state]);
 
-  // Throttle remote sync to ~20fps during drag/resize to avoid flooding the data channel
-  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scheduleSyncUpdate = (next: PanelState) => {
-    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-    syncTimerRef.current = setTimeout(() => {
-      onSyncUpdate(next);
-      syncTimerRef.current = null;
-    }, 50);
-  };
+  const movementSync = useMovementSync(onSyncUpdate);
+  const scheduleSyncUpdate = movementSync.schedule;
 
   // ── Drag ──────────────────────────────────────────────────────────────
   const handleDrag = (_: DraggableEvent, data: DraggableData) => {
@@ -160,8 +154,7 @@ export function DraggablePanel({
     const next = { ...stateRef.current, x: data.x, y: data.y };
     onLocalUpdate(next);
     // Always flush on stop so final position is always sent
-    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-    onSyncUpdate(next);
+    movementSync.flush(next);
   };
 
   // ── Resize (all four edges and corners) ───────────────────────────────
@@ -208,8 +201,7 @@ export function DraggablePanel({
     const onMouseUp = (ev: MouseEvent) => {
       const next = applyResize(ev.clientX, ev.clientY);
       onLocalUpdate(next);
-      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-      onSyncUpdate(next);
+      movementSync.flush(next);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
@@ -225,8 +217,7 @@ export function DraggablePanel({
       const t = ev.changedTouches[0];
       const next = applyResize(t.clientX, t.clientY);
       onLocalUpdate(next);
-      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-      onSyncUpdate(next);
+      movementSync.flush(next);
       window.removeEventListener("touchmove", onTouchMove);
       window.removeEventListener("touchend", onTouchEnd);
     };
