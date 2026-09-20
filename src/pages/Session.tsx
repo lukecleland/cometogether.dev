@@ -2819,6 +2819,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 							/>
 						) : panel.type === 'daw' ? (
 							<DawWidget
+								id={panel.id}
+								dataConnection={dataConnection}
 								minimized={minimizedIds.includes(panel.id)}
 								title={customLabels[panel.id] ?? fallbackLabel(panel)}
 								tracks={panel.dawTracks ?? []}
