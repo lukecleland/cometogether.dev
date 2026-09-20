@@ -1,3 +1,4 @@
+import type { BoardChange } from "../utils/whiteboardPanel";
 import type { DawTrack } from "../utils/daw";
 import { useCallback, useEffect, useEffectEvent } from 'react';
 import type { RoomDataConnection } from './usePeer';
@@ -80,6 +81,8 @@ export type SyncMessage =
 	| { type: 'text-move'; id: string; x: number; y: number }
 	| { type: 'spawn-youtube'; id: string; videoId?: string; state: PanelState }
 	| { type: 'spawn-browser'; id: string; url?: string; state: PanelState }
+	| { type: 'spawn-whiteboard'; id: string; state: PanelState }
+	| { type: 'whiteboard-change'; id: string; change: BoardChange }
 	| { type: 'spawn-image'; id: string; state: PanelState }
 	| { type: 'browser-load'; id: string; url: string }
 	| { type: 'browser-present'; id: string; active: boolean }

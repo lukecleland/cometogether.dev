@@ -1,3 +1,4 @@
+import { validBoard } from "./whiteboardPanel";
 import { normaliseDawTrack, normaliseDawTracks } from "./daw";
 import type { RoomSnapshot } from "./roomPersistence";
 import { ROOM_STATE_VERSION } from "./roomPersistence";
@@ -25,7 +26,7 @@ function hasPanelState(value: unknown): boolean {
   return ["x", "y", "width", "height", "z"].every(key => isFiniteNumber(value[key])) && (value.width as number) > 0 && (value.height as number) > 0;
 }
 
-const PANEL_TYPES = new Set(["youtube", "audio", "browser", "note", "code", "recorder", "image", "daw"]);
+const PANEL_TYPES = new Set(["youtube", "audio", "browser", "note", "code", "recorder", "image", "daw", "whiteboard"]);
 
 function hasStringValues(value: Record<string, unknown>): boolean {
   return Object.values(value).every(item => typeof item === "string");
@@ -60,6 +61,7 @@ function isRecording(value: unknown): boolean {
 
 function isPanel(value: unknown): boolean {
   if (!isObject(value) || typeof value.id !== "string" || typeof value.type !== "string" || !PANEL_TYPES.has(value.type) || !hasPanelState(value.state)) return false;
+  if (value.whiteboard !== undefined && !validBoard(value.whiteboard)) return false;
   if (value.dawTracks !== undefined && (!Array.isArray(value.dawTracks) || value.dawTracks.length > 1000 || !value.dawTracks.every(track => normaliseDawTrack(track) !== null))) return false;
   if (value.code !== undefined && (!isObject(value.code) || typeof value.code.text !== "string" || typeof value.code.language !== "string")) return false;
   if (value.note !== undefined && (!isObject(value.note) || !["text", "chord", "tab"].includes(value.note.kind as string) || typeof value.note.text !== "string" || !Array.isArray(value.note.tab) || !value.note.tab.every(item => typeof item === "string") || !Array.isArray(value.note.chords) || !value.note.chords.every(isChord) || typeof value.note.colour !== "string")) return false;

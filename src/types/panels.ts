@@ -1,9 +1,10 @@
+import type { BoardContent } from "../utils/whiteboardPanel";
 import type { DawTrack } from "../utils/daw";
 /** Fixed video panel IDs (always present). */
 export type PanelId = "local" | "remote";
 
 /** The type of a dynamically-spawned panel. */
-export type DynamicPanelType = "youtube" | "audio" | "browser" | "note" | "code" | "recorder" | "image" | "daw";
+export type DynamicPanelType = "youtube" | "audio" | "browser" | "note" | "code" | "recorder" | "image" | "daw" | "whiteboard";
 
 export interface CodeContent {
   text: string;
@@ -104,6 +105,7 @@ export interface DynamicPanel {
   type: DynamicPanelType;
   state: PanelState;
   dawTracks?: DawTrack[];
+  whiteboard?: BoardContent;
   initialVideoId?: string;
   initialFile?: File;
   /** Filename retained when a portable bundle does not contain media bytes. */
