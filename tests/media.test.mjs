@@ -158,3 +158,22 @@ test('targeted room snapshots reach only the joining peer and current owner is t
   assert.equal(received.length, 1);
   host.cleanup(); guest.cleanup();
 });
+
+test('participant dock names retain identity for live updates and joining snapshots', () => {
+  const guest = participant('1-guest', true);
+  const mesh = guest.state.find(value => value && typeof value.send === 'function');
+  const received = [];
+  mesh.on('data', message => received.push(message));
+  let sequence = 0;
+  const deliver = message => guest.peer.data.emit('data', { ...message, __meshSourcePeerId: 'maker', __meshMessageId: `names-${++sequence}` });
+  deliver({ type: 'dock-rename', id: 'local', label: 'Luke' });
+  deliver({ type: 'dock-rename', id: 'remote-peer:1-guest', label: 'Alex' });
+  deliver({ type: 'dock-rename', id: 'remote-peer:third', label: 'Sam' });
+  deliver({ type: 'dock-rename', id: 'local', label: '' });
+  assert.deepEqual(received.map(({ id, label }) => [id, label]), [['remote-peer:maker', 'Luke'], ['local', 'Alex'], ['remote-peer:third', 'Sam'], ['remote-peer:maker', '']]);
+  deliver({ type: 'room-state-snapshot', snapshot: { dockedIds: ['local', 'remote-peer:1-guest', 'remote-peer:third', 'note-1'], customLabels: { local: 'Luke', 'remote-peer:1-guest': 'Alex', 'remote-peer:third': 'Sam', 'note-1': 'Ideas' } } });
+  const snapshot = JSON.parse(JSON.stringify(received.at(-1).snapshot));
+  assert.deepEqual(snapshot.dockedIds, ['remote-peer:maker', 'local', 'remote-peer:third', 'note-1']);
+  assert.deepEqual(snapshot.customLabels, { 'remote-peer:maker': 'Luke', local: 'Alex', 'remote-peer:third': 'Sam', 'note-1': 'Ideas' });
+  guest.cleanup();
+});
