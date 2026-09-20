@@ -1,3 +1,4 @@
+import { BrandMark } from "../components/BrandMark";
 import { useState } from "react";
 import { generateCode, getCodeFromURL, setCodeInURL } from "../utils/roomCode";
 
@@ -31,25 +32,11 @@ export function Home({ onStart }: HomeProps) {
       <div className="w-full max-w-sm">
         {/* Logo / title */}
         <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-violet-600 rounded-2xl mb-4 shadow-lg shadow-violet-900/50">
-            <svg
-              className="w-8 h-8 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.8}
-                d="M15 10l4.553-2.069A1 1 0 0121 8.806v6.388a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"
-              />
-            </svg>
-          </div>
-          <h1 className="landing-brand font-bold text-white tracking-tight">
+          <BrandMark className="mx-auto mb-5 h-16 w-16" />
+          <h1 className="landing-brand brand-wordmark font-semibold text-white tracking-tight">
             <span className="sr-only">maketogether.dev</span>
             <span aria-hidden="true" className="inline-flex items-baseline">
-              <span className="brand-words text-violet-400">
+              <span className="brand-words text-brand-300">
                 {["make", "watch", "create", "record", "jam", "chat", "learn"].map((word, index) => (
                   <span key={word} className="brand-word" style={{ animationDelay: `${index * 2.6 - 0.4}s` }}>{word}</span>
                 ))}
@@ -66,7 +53,7 @@ export function Home({ onStart }: HomeProps) {
           {/* Start Session */}
           <button
             onClick={handleStart}
-            className="w-full bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white font-semibold py-3.5 px-5 rounded-2xl transition-colors shadow-lg shadow-violet-900/40 text-sm"
+            className="w-full bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white font-semibold py-3.5 px-5 rounded-2xl transition-colors shadow-lg shadow-brand-900/40 text-sm"
           >
             Start Session
           </button>
@@ -91,7 +78,7 @@ export function Home({ onStart }: HomeProps) {
               className={`w-full bg-zinc-900 border ${
                 joinError
                   ? "border-red-500"
-                  : "border-zinc-700 focus:border-violet-500"
+                  : "border-zinc-700 focus:border-brand-500"
               } text-white font-mono placeholder:text-zinc-600 text-sm rounded-xl px-4 py-3 outline-none transition-colors`}
               spellCheck={false}
               autoCapitalize="characters"

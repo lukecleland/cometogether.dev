@@ -34,7 +34,7 @@ export function ImageWidget({ file, title, transferProgress, onClose, docked, on
         )}
         {!imageUrl && transferProgress !== undefined && (
           <div className="absolute inset-x-4 bottom-4 h-1 overflow-hidden rounded-full bg-zinc-800">
-            <div className="h-full bg-violet-500 transition-[width]" style={{ width: `${transferProgress * 100}%` }} />
+            <div className="h-full bg-brand-500 transition-[width]" style={{ width: `${transferProgress * 100}%` }} />
           </div>
         )}
       </div>

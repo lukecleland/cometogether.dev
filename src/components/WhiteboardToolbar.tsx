@@ -267,7 +267,7 @@ export function WhiteboardToolbar({
       aria-expanded={tool === t && hasOptions(t) ? panelOpen : undefined}
       className={`group relative w-9 h-9 flex items-center justify-center rounded-xl transition-colors ${
         tool === t
-          ? "bg-violet-600 text-white"
+          ? "bg-brand-600 text-white"
           : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700"
       }`}
     >

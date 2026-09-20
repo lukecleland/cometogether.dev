@@ -283,7 +283,7 @@ export function YoutubeWidget({
                 } ${
                   inputError
                     ? "border-red-500"
-                    : "border-zinc-700 focus:border-violet-500"
+                    : "border-zinc-700 focus:border-brand-500"
                 }`}
               />
               {inputValue && (

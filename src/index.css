@@ -1,5 +1,30 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Outfit";
+  src: url("/fonts/outfit-latin.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@theme {
+  --color-brand-50: #faf5ff;
+  --color-brand-100: #f0e5ff;
+  --color-brand-200: #e3cefc;
+  --color-brand-300: #d4acfa;
+  --color-brand-400: #a27afa;
+  --color-brand-500: #8158f8;
+  --color-brand-600: #7048fa;
+  --color-brand-700: #5b32d6;
+  --color-brand-800: #4726a6;
+  --color-brand-900: #35206d;
+  --color-brand-950: #21143d;
+}
+
+.brand-wordmark { font-family: "Outfit", ui-sans-serif, system-ui, sans-serif; }
+
+
 @media (min-width: 1024px) {
   .whiteboard-properties {
     left: 4.75rem;
@@ -111,7 +136,7 @@ button:disabled {
 .code-highlight .token.symbol,
 .code-highlight .token.deleted { color: #fb7185; }
 .code-highlight .token.boolean,
-.code-highlight .token.number { color: #c4b5fd; }
+.code-highlight .token.number { color: #d4acfa; }
 .code-highlight .token.selector,
 .code-highlight .token.attr-name,
 .code-highlight .token.string,
@@ -217,7 +242,7 @@ button:disabled {
   position: absolute;
   inset: 0;
   border-radius: 9999px;
-  border: 1.5px solid #c4b5fd;
+  border: 1.5px solid #d4acfa;
   pointer-events: none;
   opacity: 0;
   animation: ping-radiate 1.1s ease-out forwards;

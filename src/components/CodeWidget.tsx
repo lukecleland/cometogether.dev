@@ -88,7 +88,7 @@ export function CodeWidget({ code, onChange, onClose, docked = false, onToggleDo
 				}}
 				spellCheck={false}
 				placeholder="Paste or write code…"
-				className="absolute inset-0 h-full w-full resize-none overflow-auto whitespace-pre bg-transparent p-3 font-mono text-xs leading-relaxed text-transparent caret-white outline-none selection:bg-violet-500/40 placeholder:text-zinc-600"
+				className="absolute inset-0 h-full w-full resize-none overflow-auto whitespace-pre bg-transparent p-3 font-mono text-xs leading-relaxed text-transparent caret-white outline-none selection:bg-brand-500/40 placeholder:text-zinc-600"
 			/>
 			</div>
 		</div>

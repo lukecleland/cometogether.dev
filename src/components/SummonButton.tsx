@@ -183,7 +183,7 @@ export function SummonButton({ roomCode, variant = "bar" }: SummonButtonProps) {
         onClick={handleSummon}
         className={
           variant === "prompt"
-            ? "flex items-center gap-1.5 bg-violet-600 hover:bg-violet-500 active:bg-violet-700 border border-violet-400 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+            ? "flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 active:bg-brand-700 border border-brand-400 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
             : "flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 border border-zinc-700 text-zinc-300 text-xs font-mono px-2 sm:px-3 py-1.5 rounded-lg transition-colors"
         }
         // Both variants can be on screen at once, so they must not read
@@ -261,14 +261,14 @@ export function SummonButton({ roomCode, variant = "bar" }: SummonButtonProps) {
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => setModalOpen(false)}
-                  className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-medium text-zinc-200 transition-colors hover:border-violet-500 hover:bg-zinc-700"
+                  className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-medium text-zinc-200 transition-colors hover:border-brand-500 hover:bg-zinc-700"
                 >
                   {link.label}
                 </a>
               ))}
               <button
                 onClick={copyLink}
-                className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-left text-sm font-medium text-zinc-200 transition-colors hover:border-violet-500 hover:bg-zinc-700"
+                className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-left text-sm font-medium text-zinc-200 transition-colors hover:border-brand-500 hover:bg-zinc-700"
               >
                 {copied ? "Link copied" : "Copy link"}
               </button>
