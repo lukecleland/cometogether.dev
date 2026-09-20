@@ -141,3 +141,20 @@ test('remote retry replaces a stale media call without dropping the data connect
   assert.equal(client.peer.data.open, true);
   client.cleanup();
 });
+
+test('targeted room snapshots reach only the joining peer and current owner is the lead', () => {
+  const host = participant('maker', true, true);
+  const guest = participant('1-guest', true);
+  const mesh = host.state.find(value => value && typeof value.send === 'function');
+  const guestMesh = guest.state.find(value => value && typeof value.send === 'function');
+  assert.equal(mesh.isLead, true);
+  assert.equal(guestMesh.isLead, false);
+  const received = [];
+  mesh.on('data', message => received.push(message));
+  const packet = { type: 'room-state-snapshot', __meshSourcePeerId: '1-guest', __meshMessageId: 'snapshot-1', __meshTargetPeerId: 'other-guest' };
+  host.peer.data.emit('data', packet);
+  assert.equal(received.length, 0);
+  host.peer.data.emit('data', { ...packet, __meshMessageId: 'snapshot-2', __meshTargetPeerId: 'maker' });
+  assert.equal(received.length, 1);
+  host.cleanup(); guest.cleanup();
+});

@@ -423,3 +423,7 @@ both the source and generated files. Update the `tiles-1` asset revision in
 ### Screen sharing
 
 Choose **Share screen** in the right-hand controls (or the mobile **Add widget** menu) to share a screen, window, or browser tab with participants. It temporarily replaces your camera video while keeping your microphone. **Stop sharing**, or the browser’s stop control, restores your camera. System/tab audio is not included.
+
+### Joining an existing room
+
+New participants automatically request the current room snapshot from the active room owner, then receive its media files. This restores shared panels, notes, code, drawings, DAW tracks and saved playback state. Responses are addressed to the newcomer, so joining does not reset other participants’ views. The handshake retries while connecting and also works after another participant takes over the room.

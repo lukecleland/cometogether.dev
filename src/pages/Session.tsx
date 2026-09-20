@@ -49,7 +49,7 @@ import type { Nib, TextFont } from '../utils/brush';
 import { WhiteboardToolbar } from '../components/WhiteboardToolbar';
 import { Dock, type DockEntry } from '../components/Dock';
 import { SummonButton } from '../components/SummonButton';
-import { usePeer } from '../hooks/usePeer';
+import { usePeer, type RoomDataConnection } from '../hooks/usePeer';
 import { useYouTubeSync, type SyncMessage } from '../hooks/useYouTubeSync';
 import type { PanelId, PanelState, DynamicPanel, NoteContent, CodeContent } from '../types/panels';
 import { chordsOf, defaultNoteContent } from '../types/panels';
@@ -280,7 +280,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	// immediately and show how far along its contents are.
 	const receiverRef = useRef(new TransferReceiver());
 	// The live connection, so a transfer can watch the channel's send buffer
-	const dataConnectionRef = useRef<unknown>(null);
+	const dataConnectionRef = useRef<RoomDataConnection | null>(null);
 	const [transferProgress, setTransferProgress] = useState<Record<string, number>>({});
 	// transferId -> panelId, so an in-flight transfer can be attributed
 	const transferPanelRef = useRef<Record<string, string>>({});
@@ -350,11 +350,12 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	const activeColor = wbNib === 'highlighter' ? wbHighlightColor : wbColor;
 	const setActiveColor = (c: string) => (wbNib === 'highlighter' ? setWbHighlightColor(c) : setWbColor(c));
 	const latestSnapshotRef = useRef<RoomSnapshot | null>(savedRoom);
-	const sendRoomStateRef = useRef<() => void>(() => {});
+	const sendRoomStateRef = useRef<(targetPeerId: string, requestId: string) => void>(() => {});
 	const persistedMediaRef = useRef<WeakSet<File>>(new WeakSet());
 	const mediaHydratedRef = useRef(!savedRoom);
 	const mediaHydrationPromiseRef = useRef<Promise<void>>(Promise.resolve());
-	const pendingRoomRequestRef = useRef(false);
+	const pendingRoomRequestRef = useRef(new Map<string, string>());
+	const roomRequestIdRef = useRef<string | null>(null);
 	const roomSnapshotReceivedRef = useRef(false);
 	const ignoreLocalHydrationRef = useRef(false);
 
@@ -382,10 +383,9 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			}
 		})).then(() => undefined).catch(() => undefined).finally(() => {
 			mediaHydratedRef.current = true;
-			if (pendingRoomRequestRef.current) {
-				pendingRoomRequestRef.current = false;
-				setTimeout(() => sendRoomStateRef.current(), 0);
-			}
+			for (const [peerId, requestId] of pendingRoomRequestRef.current)
+				setTimeout(() => sendRoomStateRef.current(peerId, requestId), 0);
+			pendingRoomRequestRef.current.clear();
 		});
 		mediaHydrationPromiseRef.current = hydration;
 		void hydration;
@@ -667,11 +667,11 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			return;
 		}
 		if (msg.type === 'room-state-request') {
-			if (isHost) sendRoomStateRef.current();
+			if (dataConnectionRef.current?.isLead && sourcePeerId) sendRoomStateRef.current(sourcePeerId, msg.requestId ?? `legacy:${sourcePeerId}`);
 			return;
 		}
 		if (msg.type === 'room-state-snapshot') {
-			if (!isHost) {
+			if (!roomSnapshotReceivedRef.current && (msg.requestId === undefined || msg.requestId === roomRequestIdRef.current) && sourcePeerId === roomCode.toLowerCase()) {
 				roomSnapshotReceivedRef.current = true;
 				applyRoomSnapshot(msg.snapshot);
 			}
@@ -895,7 +895,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			setConnectors([]);
 			markWhiteboardDirty();
 		}
-	}, [applyPortableSnapshot, applyRoomSnapshot, following, forgetPanel, isHost, markWhiteboardDirty, noteRemoteZ, presentationInvite, presentingId, startPulse]);
+	}, [applyPortableSnapshot, applyRoomSnapshot, following, forgetPanel, roomCode, markWhiteboardDirty, noteRemoteZ, presentationInvite, presentingId, startPulse]);
 
 	// We use useYouTubeSync here to route panel-update and whiteboard messages.
 	// YoutubeWidget mounts its own useYouTubeSync instance for YT playback messages.
@@ -1141,7 +1141,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 
 	// Stream a file to the peer for an already-spawned panel
 	const sendFileTo = useCallback(
-		(panelId: string, file: File, recordingId?: string) => {
+		(panelId: string, file: File, recordingId?: string, targetPeerId?: string) => {
 			const transferId = crypto.randomUUID();
 			transferPanelRef.current[transferId] = panelId;
 			sendSync({
@@ -1153,12 +1153,12 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				size: file.size,
 				chunks: chunkCount(file.size),
 				...(recordingId ? { recordingId } : {})
-			});
+			}, targetPeerId);
 			setTransferProgress(prev => ({ ...prev, [panelId]: 0 }));
 			void sendFileInChunks(
 				file,
 				dataConnectionRef.current,
-				({ index, data }) => sendSync({ type: 'file-chunk', transferId, index, data }),
+				({ index, data }) => sendSync({ type: 'file-chunk', transferId, index, data }, targetPeerId),
 				fraction => {
 					setTransferProgress(prev => ({ ...prev, [panelId]: fraction }));
 					if (fraction >= 1) {
@@ -1176,34 +1176,37 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	);
 
 	useEffect(() => {
-		sendRoomStateRef.current = () => {
+		sendRoomStateRef.current = (targetPeerId, requestId) => {
+			if (!dataConnectionRef.current?.isLead) return;
 			if (!mediaHydratedRef.current) {
-				pendingRoomRequestRef.current = true;
+				pendingRoomRequestRef.current.set(targetPeerId, requestId);
 				void mediaHydrationPromiseRef.current;
 				return;
 			}
 			const snapshot = latestSnapshotRef.current;
 			if (!snapshot) return;
-			sendSync({ type: 'room-state-snapshot', snapshot });
+			sendSync({ type: 'room-state-snapshot', snapshot: { ...snapshot, drawings: whiteboardRef.current?.getItems() ?? snapshot.drawings, savedAt: Date.now() }, requestId }, targetPeerId);
 			dynamicPanels.forEach(panel => {
-				if (panel.initialFile) sendFileTo(panel.id, panel.initialFile);
-				panel.recordings?.forEach(recording => sendFileTo(panel.id, recording.file, recording.id));
+				if (panel.initialFile) sendFileTo(panel.id, panel.initialFile, undefined, targetPeerId);
+				panel.recordings?.forEach(recording => sendFileTo(panel.id, recording.file, recording.id, targetPeerId));
 			});
 		};
 	}, [dynamicPanels, sendFileTo, sendSync]);
 
 	useEffect(() => {
-		if (isHost || status !== 'connected') return;
+		if (status !== 'connected' || dataConnectionRef.current?.isLead) return;
 		roomSnapshotReceivedRef.current = false;
+		const requestId = crypto.randomUUID();
+		roomRequestIdRef.current = requestId;
 		// A data channel can open before the host's React listener is attached.
 		// Retry the initial handshake until the first snapshot arrives.
 		const request = () => {
-			if (!roomSnapshotReceivedRef.current) sendSync({ type: 'room-state-request' });
+			if (!roomSnapshotReceivedRef.current && !dataConnectionRef.current?.isLead) sendSync({ type: 'room-state-request', requestId });
 		};
 		request();
 		const timer = setInterval(request, 1000);
 		return () => clearInterval(timer);
-	}, [isHost, sendSync, status]);
+	}, [sendSync, status]);
 
 	useEffect(() => {
 		if (status === 'connected') sendSync({ type: 'panel-announce', id: 'local', state: normalisePanel(fixedPanels.local) });
