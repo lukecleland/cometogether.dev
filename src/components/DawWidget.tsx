@@ -6,6 +6,7 @@ import { DawWaveform } from "./DawWaveform";
 import { DawInstrument } from "./DawInstrument";
 import {
   useEffect,
+  useCallback,
   useEffectEvent,
   useRef,
   useState,
@@ -74,6 +75,23 @@ export function DawWidget({
   minimized = false,
 }: Props) {
   const remoteActivityRef = useRef<DawActivity | null>(null);
+  const remoteClockRef = useRef<{
+    id: string;
+    position: number;
+    at: number;
+  } | null>(null);
+  const remotePosition = useCallback((activity: DawActivity) => {
+    const clock = remoteClockRef.current;
+    if (!clock || clock.id !== activity.id)
+      return dawActivityPosition(activity);
+    return Math.min(
+      MAX_DAW_SECONDS,
+      clock.position +
+        (activity.mode === "stopped"
+          ? 0
+          : (performance.now() - clock.at) / 1000),
+    );
+  }, []);
   const receivedCommandRef = useRef("");
   const localTakeRef = useRef(false);
   const [remoteNotes, setRemoteNotes] = useState<DawMidiNote[]>([]);
@@ -357,33 +375,51 @@ export function DawWidget({
     transport.at = ctx.currentTime;
   }, [tracks, buffers]);
 
+  // One animation clock owns the visible playhead. Network snapshots and audio
+  // scheduling must not write older positions over an already-rendered frame.
   useEffect(() => {
-    if (!playing) return;
-    const timer = setInterval(() => {
-      const t = transportRef.current;
+    if (!playing && !recording) return;
+    let frame = 0;
+    const tick = () => {
       const remote = remoteActivityRef.current;
-      if ((!t.active || !contextRef.current) && remote?.mode !== "playing")
-        return;
-      const position =
-        remote?.mode === "playing"
-          ? dawActivityPosition(remote)
-          : t.offset + contextRef.current!.currentTime - t.at;
-      if (position >= duration) {
-        t.active = false;
-        sourcesRef.current.forEach((source) => {
-          try {
-            source.stop();
-          } catch {
-            /* Finished. */
+      if (recording) {
+        const elapsed =
+          remote?.mode === "recording"
+            ? remotePosition(remote) - remote.position
+            : Math.max(
+                0,
+                (performance.now() - recordingStartedRef.current) / 1000,
+              );
+        setRecordingSeconds(elapsed);
+      } else {
+        const t = transportRef.current;
+        if ((t.active && contextRef.current) || remote?.mode === "playing") {
+          const position =
+            remote?.mode === "playing"
+              ? remotePosition(remote)
+              : t.offset + contextRef.current!.currentTime - t.at;
+          if (position >= duration) {
+            t.active = false;
+            sourcesRef.current.forEach((source) => {
+              try {
+                source.stop();
+              } catch {
+                /* Finished. */
+              }
+            });
+            sourcesRef.current = [];
+            setPlaying(false);
+            setPlayhead(0);
+            return;
           }
-        });
-        sourcesRef.current = [];
-        setPlaying(false);
-        setPlayhead(0);
-      } else setPlayhead(position);
-    }, 50);
-    return () => clearInterval(timer);
-  }, [playing, duration]);
+          setPlayhead(position);
+        }
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [playing, recording, duration, remotePosition]);
 
   useEffect(() => {
     if (!recording || remoteActivityRef.current?.mode === "recording") return;
@@ -391,7 +427,6 @@ export function DawWidget({
     const timer = setInterval(() => {
       if (!localTakeRef.current) return;
       const elapsed = (performance.now() - recordingStartedRef.current) / 1000;
-      setRecordingSeconds(elapsed);
       analyserRef.current?.getFloatTimeDomainData(samples);
       let peak = 0;
       for (const sample of samples) peak = Math.max(peak, Math.abs(sample));
@@ -545,7 +580,7 @@ export function DawWidget({
   const currentPosition = () => {
     const transport = transportRef.current;
     if (remoteActivityRef.current?.mode === "playing")
-      return Math.min(duration, dawActivityPosition(remoteActivityRef.current));
+      return Math.min(duration, remotePosition(remoteActivityRef.current));
     return transport.active && contextRef.current
       ? Math.min(
           duration,
@@ -561,7 +596,16 @@ export function DawWidget({
       const ctx = context();
       await ctx.resume();
       if (!aliveRef.current || request !== transportRequestRef.current) return;
-      const offset = Math.max(0, position >= duration ? 0 : position);
+      const current =
+        !share && remoteActivityRef.current?.mode === "playing"
+          ? remotePosition(remoteActivityRef.current)
+          : position;
+      if (!share && current >= duration) {
+        stopSources();
+        transportRef.current.active = false;
+        return;
+      }
+      const offset = Math.max(0, current >= duration ? 0 : current);
       stopSources();
       sourcesRef.current = scheduleDaw(
         ctx,
@@ -571,9 +615,9 @@ export function DawWidget({
         ctx.currentTime,
       );
       transportRef.current = { active: true, at: ctx.currentTime, offset };
-      setPlayhead(offset);
-      setPlaying(true);
       if (share) {
+        setPlayhead(offset);
+        setPlaying(true);
         remoteActivityRef.current = null;
         sync.publish("playing", offset);
       }
@@ -683,7 +727,7 @@ export function DawWidget({
 
   const finishRecording = () => {
     if (remoteActivityRef.current?.mode === "recording") {
-      sync.publish("stopped", dawActivityPosition(remoteActivityRef.current));
+      sync.publish("stopped", remotePosition(remoteActivityRef.current));
       remoteActivityRef.current = null;
       setRecording(false);
       setLiveTake(null);
@@ -931,6 +975,11 @@ export function DawWidget({
       const changed = receivedCommandRef.current !== activity.id;
       receivedCommandRef.current = activity.id;
       if (changed) {
+        remoteClockRef.current = {
+          id: activity.id,
+          position: dawActivityPosition(activity),
+          at: performance.now(),
+        };
         // A peer's Stop also finalizes the actual recorder, rather than only its UI.
         if (localTakeRef.current) {
           localTakeRef.current = false;
@@ -939,11 +988,11 @@ export function DawWidget({
         stop(false, false);
       }
       remoteActivityRef.current = activity;
-      const position = dawActivityPosition(activity);
+      const position = remotePosition(activity);
       if (activity.mode === "recording") {
         setRecording(true);
         setLiveTake({ trackId: activity.trackId!, start: activity.position });
-        setRecordingSeconds(position - activity.position);
+        if (changed) setRecordingSeconds(position - activity.position);
         setLivePeaks(activity.peaks ?? []);
         setRemoteNotes(activity.notes ?? []);
       } else {
@@ -951,7 +1000,7 @@ export function DawWidget({
         setLiveTake(null);
         if (activity.mode === "playing") {
           setPlaying(position < duration);
-          setPlayhead(position < duration ? position : 0);
+          if (changed) setPlayhead(position < duration ? position : 0);
           // Correct drift without restarting audio on every heartbeat.
           if (
             changed ||
@@ -1031,16 +1080,6 @@ export function DawWidget({
       }
     },
   );
-
-  useEffect(() => {
-    if (!recording) return;
-    const timer = setInterval(() => {
-      const activity = remoteActivityRef.current;
-      if (activity?.mode === "recording")
-        setRecordingSeconds(dawActivityPosition(activity) - activity.position);
-    }, 50);
-    return () => clearInterval(timer);
-  }, [recording]);
 
   const exportMix = async () => {
     setBusy(true);
