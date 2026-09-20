@@ -13,10 +13,10 @@ export function generateCode(): string {
   return WORDS[array[0] % WORDS.length].toUpperCase();
 }
 
-/** Reads the `?room=` URL query parameter. Returns null if not present. */
+/** Reads the `?room=` URL query parameter. Normalises shared words; returns null when empty. */
 export function getCodeFromURL(): string | null {
   const params = new URLSearchParams(window.location.search);
-  return params.get("room");
+  return params.get("room")?.trim().toUpperCase() || null;
 }
 
 /** Writes `code` into the `?room=` query parameter using pushState (no page reload). */
