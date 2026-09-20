@@ -381,3 +381,125 @@ test("split preserves source offsets and arrangement length", () => {
   assert.equal(daw.splitDawRegion(r, 5, "no"), null);
   assert.equal(daw.splitDawRegion(r, 11, "no"), null);
 });
+
+test("track creation order survives edits and converges across participants", () => {
+  const older = { ...track("z"), order: 1 };
+  const newer = { ...track("a"), order: 2 };
+  const left = daw.mergeDawTrack(daw.mergeDawTrack([], newer), older);
+  const right = daw.mergeDawTrack(daw.mergeDawTrack([], older), newer);
+  assert.deepEqual(plain(left), plain(right));
+  assert.deepEqual(plain(left.map((t) => t.id)), ["z", "a"]);
+  assert.deepEqual(
+    plain(daw.mergeDawTrack(left, { ...older, revision: 9 }).map((t) => t.id)),
+    ["z", "a"],
+  );
+  assert.equal(daw.isDawTrack({ ...older, order: -1 }), false);
+  assert.equal(daw.isDawTrack({ ...older, kind: "invalid" }), false);
+});
+
+test("MIDI regions validate note limits and keep notes through splitting", () => {
+  const region = {
+    ...track("m").regions[0],
+    notes: [{ pitch: 60, start: 1, duration: 3, velocity: 0.8 }],
+  };
+  assert.equal(daw.isDawRegion(region), true);
+  const split = daw.splitDawRegion(region, 2, "right");
+  assert.deepEqual(plain(split[0].notes), plain(split[1].notes));
+  for (const patch of [
+    { pitch: 128 },
+    { start: -1 },
+    { duration: 0 },
+    { duration: 20 },
+    { velocity: 2 },
+  ])
+    assert.equal(
+      daw.isDawRegion({ ...region, notes: [{ ...region.notes[0], ...patch }] }),
+      false,
+    );
+});
+
+test("MIDI scheduling seeks into held notes without requiring an audio file", () => {
+  const starts = [],
+    stops = [],
+    frequencies = [];
+  const node = () => ({
+    connect(next) {
+      return next;
+    },
+    disconnect() {},
+  });
+  const context = {
+    destination: node(),
+    createOscillator: () => {
+      const source = {
+        ...node(),
+        frequency: { value: 0 },
+        start: (time) => {
+          starts.push(time);
+          frequencies.push(source.frequency.value);
+        },
+        stop: (time) => stops.push(time),
+      };
+      return source;
+    },
+    createGain: () => ({
+      ...node(),
+      gain: { setValueAtTime() {}, linearRampToValueAtTime() {} },
+    }),
+    createStereoPanner: () => ({ ...node(), pan: { value: 0 } }),
+  };
+  const t = track("m");
+  t.kind = "midi";
+  t.regions[0].notes = [{ pitch: 69, start: 1, duration: 3, velocity: 0.8 }];
+  const sources = daw.scheduleDaw(context, [t], new Map(), 2, 100);
+  assert.equal(sources.length, 1);
+  assert.deepEqual(starts, [100]);
+  assert.deepEqual(stops, [102]);
+  assert.deepEqual(frequencies, [440]);
+});
+
+const { waveformEnvelope } = load("src/utils/dawWaveform.ts");
+test("waveform envelopes include short transients in either stereo channel", () => {
+  const left = new Float32Array(4096),
+    right = new Float32Array(4096);
+  left[173] = -0.9;
+  right[1777] = 0.8;
+  const buffer = {
+    length: 4096,
+    numberOfChannels: 2,
+    sampleRate: 4096,
+    getChannelData: (c) => (c === 0 ? left : right),
+  };
+  const envelope = waveformEnvelope(buffer, 0, 1, 512);
+  assert.equal(envelope.length, 512);
+  assert.ok(envelope.some((p) => p.min < -0.89));
+  assert.ok(envelope.some((p) => p.max > 0.79));
+  const trimmed = waveformEnvelope(buffer, 0.5, 1, 128);
+  assert.ok(trimmed.every((p) => p.min === 0 && p.max === 0));
+});
+
+test("reordering tracks preserves regions and mixer settings and supports legacy order", () => {
+  const original = [track("a"), track("b"), track("c")];
+  const changes = daw.reorderDawTracks(original, "a", "c", false);
+  const reordered = changes.reduce(
+    (tracks, t) => daw.mergeDawTrack(tracks, { ...t, revision: 10 }),
+    original,
+  );
+  assert.deepEqual(plain(reordered.map((t) => t.id)), ["b", "c", "a"]);
+  for (const t of reordered) {
+    assert.deepEqual(
+      plain(t.regions),
+      plain(original.find((o) => o.id === t.id).regions),
+    );
+    assert.equal(t.volume, 0.8);
+  }
+  assert.equal(daw.reorderDawTracks(reordered, "a", "a", true).length, 0);
+  assert.equal(daw.reorderDawTracks(reordered, "missing", "b", true).length, 0);
+  const back = daw
+    .reorderDawTracks(reordered, "a", "b", true)
+    .reduce(
+      (tracks, t) => daw.mergeDawTrack(tracks, { ...t, revision: 11 }),
+      reordered,
+    );
+  assert.deepEqual(plain(back.map((t) => t.id)), ["a", "b", "c"]);
+});

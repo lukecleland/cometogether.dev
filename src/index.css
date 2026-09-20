@@ -281,12 +281,12 @@ button:disabled {
   text-align: right;
   opacity: 0;
   transform: translateY(100%) rotateX(-35deg);
-  animation: brand-word-shuffle 18.2s cubic-bezier(.22, 1, .36, 1) infinite;
+  animation: brand-word-shuffle 23.4s cubic-bezier(.22, 1, .36, 1) infinite;
 }
 @keyframes brand-word-shuffle {
   0% { opacity: 0; transform: translateY(100%) rotateX(-35deg); }
-  2%, 12% { opacity: 1; transform: translateY(0) rotateX(0); }
-  14.2857%, 100% { opacity: 0; transform: translateY(-100%) rotateX(35deg); }
+  1.5556%, 9.3333% { opacity: 1; transform: translateY(0) rotateX(0); }
+  11.1111%, 100% { opacity: 0; transform: translateY(-100%) rotateX(35deg); }
 }
 @media (prefers-reduced-motion: reduce) {
   .brand-word { animation: none; opacity: 0; transform: none; }

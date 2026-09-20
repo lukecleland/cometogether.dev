@@ -1,3 +1,6 @@
+import { DawCreateTrackDialog } from "./DawCreateTrackDialog";
+import { DawWaveform } from "./DawWaveform";
+import { DawInstrument } from "./DawInstrument";
 import {
   useEffect,
   useRef,
@@ -12,6 +15,10 @@ import { dawShortcut } from "../utils/dawShortcuts";
 import type { RecordingClip } from "../types/panels";
 import {
   audibleTracks,
+  compareDawTracks,
+  reorderDawTracks,
+  scheduleDawNote,
+  type DawMidiNote,
   visibleRegions,
   mergeDawTrack,
   mergeDawRegions,
@@ -46,43 +53,6 @@ const time = (seconds: number) => {
   return `${Math.floor(tenths / 600)}:${((tenths % 600) / 10).toFixed(1).padStart(4, "0")}`;
 };
 
-function Waveform({
-  buffer,
-  track,
-}: {
-  buffer?: AudioBuffer;
-  track: DawRegion;
-}) {
-  if (!buffer) return null;
-  const samples = buffer.getChannelData(0);
-  const begin = Math.floor(track.trimStart * buffer.sampleRate);
-  const length = Math.floor(
-    (track.trimEnd - track.trimStart) * buffer.sampleRate,
-  );
-  const bars = Array.from({ length: 160 }, (_, i) => {
-    let peak = 0;
-    const from = begin + Math.floor((i * length) / 160);
-    const to = Math.min(
-      samples.length,
-      begin + Math.floor(((i + 1) * length) / 160),
-    );
-    const step = Math.max(1, Math.floor((to - from) / 80));
-    for (let j = from; j < to; j += step)
-      peak = Math.max(peak, Math.abs(samples[j]));
-    return `M${i * 3} ${25 - peak * 23}v${Math.max(1, peak * 46)}`;
-  }).join("");
-  return (
-    <svg
-      viewBox="0 0 480 50"
-      preserveAspectRatio="none"
-      className="h-full w-full"
-      aria-hidden="true"
-    >
-      <path d={bars} stroke="currentColor" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
 export function DawWidget({
   title,
   tracks,
@@ -108,6 +78,18 @@ export function DawWidget({
     trackId?: string;
     regionId?: string;
   } | null>(null);
+  const [trackDrag, setTrackDrag] = useState<{
+    id: string;
+    target: string;
+    before: boolean;
+  } | null>(null);
+  const trackDragRef = useRef<{
+    id: string;
+    target: string;
+    before: boolean;
+    y: number;
+    moved: boolean;
+  } | null>(null);
   const clipboard = useRef<DawRegion | null>(null);
   const tracksRef = useRef(tracks);
   tracksRef.current = tracks;
@@ -116,7 +98,17 @@ export function DawWidget({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [recording, setRecording] = useState(false);
-  const [zoom, setZoom] = useState(20);
+  const [zoom, setZoom] = useState(0);
+  const [viewportWidth, setViewportWidth] = useState(640);
+  const [scrollLeft, setScrollLeft] = useState(0);
+  const [createTrackOpen, setCreateTrackOpen] = useState(false);
+  const instrumentNotes = useRef(new Map<number, AudioScheduledSourceNode>());
+  const midiTake = useRef<{
+    trackId: string;
+    start: number;
+    notes: DawMidiNote[];
+    held: Map<number, number>;
+  } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const [keyboardActive, setKeyboardActive] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -139,7 +131,7 @@ export function DawWidget({
   const relinkRef = useRef<DawRegion | null>(null);
   const aliveRef = useRef(true);
   const revisionRef = useRef(0);
-  const sourcesRef = useRef<AudioBufferSourceNode[]>([]);
+  const sourcesRef = useRef<AudioScheduledSourceNode[]>([]);
   const transportRequestRef = useRef(0);
   const transportRef = useRef({ active: false, at: 0, offset: 0 });
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -152,7 +144,7 @@ export function DawWidget({
     edge: string;
     pixelsPerSecond: number;
   } | null>(null);
-  const active = tracks.filter((t) => !t.deleted);
+  const active = tracks.filter((t) => !t.deleted).sort(compareDawTracks);
   const selectedTrack = active.find((t) => t.id === selected);
   const selectedRegion =
     selectedTrack &&
@@ -165,9 +157,23 @@ export function DawWidget({
     duration + 5,
     Math.ceil((cursor + 5) / 30) * 30,
   );
-  const timelineWidth = Math.max(500, timelineSeconds * zoom);
+  const fitWidth = Math.max(100, viewportWidth - 230);
+  const timelineWidth = fitWidth * 2 ** (zoom / 15);
+  const pixelsPerSecond = timelineWidth / timelineSeconds;
+  const rulerStep =
+    [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find(
+      (step) => step * pixelsPerSecond >= 65,
+    ) ?? 600;
+  useEffect(() => {
+    const node = timelineRef.current;
+    if (!node) return;
+    const resize = new ResizeObserver(() => setViewportWidth(node.clientWidth));
+    resize.observe(node);
+    setViewportWidth(node.clientWidth);
+    return () => resize.disconnect();
+  }, []);
   const missing = audibleTracks(tracks).some((t) =>
-    visibleRegions(t).some((r) => !buffers.has(r.sourceId)),
+    visibleRegions(t).some((r) => !r.notes && !buffers.has(r.sourceId)),
   );
 
   const context = () =>
@@ -202,6 +208,7 @@ export function DawWidget({
 
   useEffect(() => {
     aliveRef.current = true;
+    const voices = instrumentNotes.current;
     return () => {
       aliveRef.current = false;
       transportRef.current.active = false;
@@ -215,6 +222,15 @@ export function DawWidget({
       if (recordTimerRef.current) clearTimeout(recordTimerRef.current);
       if (recorderRef.current?.state === "recording")
         recorderRef.current.stop();
+      voices.forEach((note) => {
+        try {
+          note.stop();
+        } catch {
+          /* stopped */
+        }
+      });
+      voices.clear();
+      midiTake.current = null;
       microphoneSourceRef.current?.disconnect();
       analyserRef.current?.disconnect();
       micRef.current?.getTracks().forEach((track) => track.stop());
@@ -368,10 +384,24 @@ export function DawWidget({
       ),
     });
   };
-  const newTrack = (name = `Audio ${active.length + 1}`) => {
+  const reorderTracks = (id: string, target: string, before: boolean) => {
+    if (recording || busy) return;
+    for (const track of reorderDawTracks(tracksRef.current, id, target, before))
+      publish(track, { order: track.order });
+  };
+  const cancelTrackDrag = () => {
+    trackDragRef.current = null;
+    setTrackDrag(null);
+  };
+  const newTrack = (
+    name = `Audio ${tracksRef.current.filter((t) => !t.deleted).length + 1}`,
+    kind: "audio" | "midi" = "audio",
+  ) => {
     const track: DawTrack = {
       id: crypto.randomUUID(),
       name,
+      kind,
+      order: Math.max(0, ...tracksRef.current.map((t) => t.order ?? 0)) + 1,
       volume: 0.8,
       pan: 0,
       muted: false,
@@ -390,7 +420,7 @@ export function DawWidget({
     files: File[],
     relink: DawRegion | null = null,
     start = playhead,
-    targetId = selected,
+    targetId: string | null = null,
   ) => {
     setBusy(true);
     setError("");
@@ -491,7 +521,141 @@ export function DawWidget({
     }
   };
 
+  const noteOff = (pitch: number) => {
+    const node = instrumentNotes.current.get(pitch);
+    if (node) {
+      try {
+        node.stop();
+      } catch {
+        /* already stopped */
+      }
+      instrumentNotes.current.delete(pitch);
+    }
+    const take = midiTake.current;
+    const start = take?.held.get(pitch);
+    if (take && start !== undefined) {
+      take.notes.push({
+        pitch,
+        start,
+        duration: Math.max(
+          0.01,
+          (performance.now() - recordingStartedRef.current) / 1000 - start,
+        ),
+        velocity: 0.8,
+      });
+      take.held.delete(pitch);
+    }
+  };
+  const noteOn = (pitch: number) => {
+    if (
+      instrumentNotes.current.has(pitch) ||
+      selectedTrack?.kind !== "midi" ||
+      (midiTake.current && midiTake.current.trackId !== selectedTrack.id)
+    )
+      return;
+    const ctx = context();
+    void ctx.resume();
+    instrumentNotes.current.set(
+      pitch,
+      scheduleDawNote(
+        ctx,
+        pitch,
+        selectedTrack.muted ? 0 : selectedTrack.volume,
+        selectedTrack.pan,
+        ctx.currentTime,
+        MAX_DAW_SECONDS,
+      ),
+    );
+    if (midiTake.current)
+      midiTake.current.held.set(
+        pitch,
+        (performance.now() - recordingStartedRef.current) / 1000,
+      );
+  };
+  useEffect(() => {
+    const voices = instrumentNotes.current;
+    const release = () => {
+      voices.forEach((node) => {
+        try {
+          node.stop();
+        } catch {
+          /* stopped */
+        }
+      });
+      voices.clear();
+      const take = midiTake.current;
+      if (take) {
+        const now = (performance.now() - recordingStartedRef.current) / 1000;
+        take.held.forEach((start, pitch) =>
+          take.notes.push({
+            pitch,
+            start,
+            duration: Math.max(0.01, now - start),
+            velocity: 0.8,
+          }),
+        );
+        take.held.clear();
+      }
+    };
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("blur", release);
+      release();
+    };
+  }, [selected, minimized]);
+
   const finishRecording = () => {
+    if (midiTake.current) {
+      const take = midiTake.current;
+      [...take.held.keys()].forEach(noteOff);
+      const length = Math.min(
+        MAX_DAW_SECONDS - take.start,
+        Math.max(
+          0.01,
+          (performance.now() - recordingStartedRef.current) / 1000,
+          ...take.notes.map((n) => n.start + n.duration),
+        ),
+      );
+      const notes = take.notes
+        .filter((note) => note.start < length)
+        .map((note) => ({
+          ...note,
+          duration: Math.min(note.duration, length - note.start),
+        }));
+      midiTake.current = null;
+      instrumentNotes.current.forEach((node) => {
+        try {
+          node.stop();
+        } catch {
+          /* stopped */
+        }
+      });
+      instrumentNotes.current.clear();
+      if (recordTimerRef.current) clearTimeout(recordTimerRef.current);
+      const track = tracksRef.current.find(
+        (t) => t.id === take.trackId && !t.deleted,
+      );
+      if (track && notes.length && length > 0) {
+        const region: DawRegion = {
+          id: crypto.randomUUID(),
+          sourceId: "midi",
+          name: "MIDI take",
+          duration: length,
+          start: take.start,
+          trimStart: 0,
+          trimEnd: length,
+          deleted: false,
+          notes,
+          ...revision(),
+        };
+        publishRegions(track, [region]);
+        setSelectedRegionId(region.id);
+      }
+      setRecording(false);
+      setLiveTake(null);
+      setPlayhead(take.start + length);
+      return;
+    }
     if (recorderRef.current?.state === "recording") {
       setBusy(true);
       recorderRef.current.stop();
@@ -514,13 +678,37 @@ export function DawWidget({
   };
 
   const startRecording = async () => {
-    if (recorderRef.current?.state === "recording") {
+    if (recording) {
       finishRecording();
       return;
     }
     if (busy) return;
     const start = currentPosition();
+    if (start >= MAX_DAW_SECONDS - 0.01) {
+      setError("Move the playhead before the 30-minute limit to record.");
+      return;
+    }
+    setError("");
     stop();
+    if (selectedTrack?.kind === "midi") {
+      recordingStartedRef.current = performance.now();
+      midiTake.current = {
+        trackId: selectedTrack.id,
+        start,
+        notes: [],
+        held: new Map(),
+      };
+      setLiveTake({ trackId: selectedTrack.id, start });
+      setLivePeaks([]);
+      setRecordingSeconds(0);
+      setRecording(true);
+      recordTimerRef.current = setTimeout(
+        finishRecording,
+        Math.max(100, (MAX_DAW_SECONDS - start - 0.1) * 1000),
+      );
+      rootRef.current?.focus({ preventScroll: true });
+      return;
+    }
     const request = ++transportRequestRef.current;
     setBusy(true);
     setError("");
@@ -768,7 +956,10 @@ export function DawWidget({
     {
       label: "Duplicate Track Settings",
       action: () => {
-        const t = newTrack(`${menuTrack!.name} copy`);
+        const t = newTrack(
+          `${menuTrack!.name} copy`,
+          menuTrack!.kind ?? "audio",
+        );
         publish(t, {
           volume: menuTrack!.volume,
           pan: menuTrack!.pan,
@@ -906,13 +1097,14 @@ export function DawWidget({
         ]
       : menu?.kind === "View"
         ? [
+            { label: "Fit Entire Project", action: () => setZoom(0) },
             {
               label: "Zoom In",
-              action: () => setZoom((z) => Math.min(80, z + 5)),
+              action: () => setZoom((z) => Math.min(100, z + 5)),
             },
             {
               label: "Zoom Out",
-              action: () => setZoom((z) => Math.max(5, z - 5)),
+              action: () => setZoom((z) => Math.max(0, z - 5)),
             },
             {
               label: "Keyboard Shortcuts",
@@ -928,6 +1120,11 @@ export function DawWidget({
     if (minimized) return;
     // Keep canvas pan/laser shortcuts out of this window, including text inputs.
     event.stopPropagation();
+    if (event.key === "Escape" && trackDragRef.current) {
+      event.preventDefault();
+      cancelTrackDrag();
+      return;
+    }
     const target = event.target as HTMLElement;
     const editing = !!target.closest(
       'input, textarea, select, [contenteditable="true"]',
@@ -1044,10 +1241,10 @@ export function DawWidget({
           );
         break;
       case "zoom-in":
-        setZoom((z) => Math.min(80, z + 5));
+        setZoom((z) => Math.min(100, z + 5));
         break;
       case "zoom-out":
-        setZoom((z) => Math.max(5, z - 5));
+        setZoom((z) => Math.max(0, z - 5));
         break;
       case "help":
         setShowShortcuts((show) => !show);
@@ -1252,10 +1449,7 @@ export function DawWidget({
           </div>
           <button
             className={button}
-            onClick={() => {
-              relinkRef.current = null;
-              inputRef.current?.click();
-            }}
+            onClick={() => setCreateTrackOpen(true)}
             disabled={busy || recording}
           >
             + Add audio
@@ -1272,9 +1466,15 @@ export function DawWidget({
             <input
               aria-label="Timeline zoom"
               type="range"
-              min="5"
-              max="80"
+              min="0"
+              max="100"
               value={zoom}
+              aria-valuetext={
+                zoom === 0
+                  ? "Fit entire project"
+                  : `${Math.round(2 ** (zoom / 15) * 100)}% of fit`
+              }
+              title="Zoom all the way out to fit the entire project"
               onChange={(e) => setZoom(+e.target.value)}
               className="w-16 accent-emerald-400"
             />
@@ -1338,6 +1538,7 @@ export function DawWidget({
         )}
         <div
           ref={timelineRef}
+          onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
           className="min-h-0 flex-1 overflow-auto"
           onContextMenu={(event) => {
             event.preventDefault();
@@ -1370,10 +1571,10 @@ export function DawWidget({
                 >
                   {Array.from(
                     {
-                      length: Math.ceil(timelineSeconds / (zoom < 15 ? 10 : 5)),
+                      length: Math.ceil(timelineSeconds / rulerStep),
                     },
                     (_, i) => {
-                      const seconds = i * (zoom < 15 ? 10 : 5);
+                      const seconds = i * rulerStep;
                       return (
                         <span
                           key={seconds}
@@ -1393,6 +1594,7 @@ export function DawWidget({
                 <div
                   key={track.id}
                   data-track-row={track.id}
+                  data-reordering={trackDrag?.id === track.id || undefined}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -1409,8 +1611,15 @@ export function DawWidget({
                     setSelected(track.id);
                     setSelectedRegionId(null);
                   }}
-                  className={`flex h-24 border-b border-zinc-800 ${selected === track.id ? "bg-emerald-950/20" : "bg-zinc-950"}`}
+                  className={`relative flex h-24 border-b border-zinc-800 ${selected === track.id ? "bg-emerald-950/20" : "bg-zinc-950"}`}
                 >
+                  {trackDrag?.target === track.id &&
+                    trackDrag.id !== track.id && (
+                      <div
+                        data-track-drop-indicator
+                        className={`pointer-events-none absolute inset-x-0 z-30 h-0.5 bg-brand-300 ${trackDrag.before ? "top-0" : "bottom-0"}`}
+                      />
+                    )}
                   <div
                     className={`sticky left-0 z-20 flex w-[230px] shrink-0 flex-col justify-center gap-2 border-r border-zinc-800 px-2 py-1 ${selected === track.id ? "bg-emerald-950 ring-1 ring-inset ring-emerald-500/60" : "bg-zinc-900"}`}
                     onClick={() => {
@@ -1418,47 +1627,131 @@ export function DawWidget({
                       setSelectedRegionId(null);
                     }}
                   >
-                    {renaming === track.id ? (
-                      <input
-                        aria-label={`Track name ${index + 1}`}
-                        value={track.name}
-                        maxLength={200}
-                        autoFocus
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) =>
-                          publish(track, { name: e.target.value })
-                        }
-                        onBlur={() => setRenaming(null)}
+                    <div className="flex h-5 items-center gap-1">
+                      <button
+                        aria-label={`Reorder track ${track.name}`}
+                        title="Drag to reorder; use ↑ / ↓ when focused"
+                        disabled={locked}
+                        className="shrink-0 touch-none cursor-grab rounded px-1 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200 active:cursor-grabbing disabled:opacity-30"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => {
+                          if (e.button !== 0 || locked) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.currentTarget.focus();
+                          e.currentTarget.setPointerCapture(e.pointerId);
+                          trackDragRef.current = {
+                            id: track.id,
+                            target: track.id,
+                            before: true,
+                            y: e.clientY,
+                            moved: false,
+                          };
+                        }}
+                        onPointerMove={(e) => {
+                          const drag = trackDragRef.current;
+                          if (!drag || drag.id !== track.id) return;
+                          if (Math.abs(e.clientY - drag.y) < 4 && !drag.moved)
+                            return;
+                          drag.moved = true;
+                          const timeline = timelineRef.current;
+                          if (!timeline) return;
+                          const bounds = timeline.getBoundingClientRect();
+                          const scale =
+                            bounds.height / timeline.clientHeight || 1;
+                          if (e.clientY < bounds.top + 28)
+                            timeline.scrollTop -= 16 / scale;
+                          if (e.clientY > bounds.bottom - 28)
+                            timeline.scrollTop += 16 / scale;
+                          const rows = [
+                            ...timeline.querySelectorAll<HTMLElement>(
+                              "[data-track-row]",
+                            ),
+                          ];
+                          const target =
+                            rows.find((row) => {
+                              const r = row.getBoundingClientRect();
+                              return e.clientY < r.top + r.height / 2;
+                            }) ?? rows.at(-1);
+                          if (!target) return;
+                          const rect = target.getBoundingClientRect();
+                          drag.target = target.dataset.trackRow!;
+                          drag.before = e.clientY < rect.top + rect.height / 2;
+                          setTrackDrag({
+                            id: drag.id,
+                            target: drag.target,
+                            before: drag.before,
+                          });
+                        }}
+                        onPointerUp={(e) => {
+                          const drag = trackDragRef.current;
+                          if (drag?.moved)
+                            reorderTracks(drag.id, drag.target, drag.before);
+                          cancelTrackDrag();
+                          if (e.currentTarget.hasPointerCapture(e.pointerId))
+                            e.currentTarget.releasePointerCapture(e.pointerId);
+                        }}
+                        onPointerCancel={cancelTrackDrag}
+                        onLostPointerCapture={cancelTrackDrag}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === "Escape") {
+                          if (e.key === "ArrowUp" || e.key === "ArrowDown") {
                             e.preventDefault();
                             e.stopPropagation();
-                            setRenaming(null);
-                            rootRef.current?.focus({ preventScroll: true });
+                            const target =
+                              active[index + (e.key === "ArrowUp" ? -1 : 1)];
+                            if (target)
+                              reorderTracks(
+                                track.id,
+                                target.id,
+                                e.key === "ArrowUp",
+                              );
                           }
                         }}
-                        className="w-full rounded bg-zinc-950 px-1 text-xs outline-none focus:text-emerald-300"
-                      />
-                    ) : (
-                      <button
-                        className="flex h-5 w-full items-center gap-2 truncate text-left text-xs"
-                        aria-label={`Select track ${track.name}`}
-                        aria-pressed={selected === track.id}
-                        title="Select track; double-click to rename"
-                        onClick={() => {
-                          setSelected(track.id);
-                          setSelectedRegionId(null);
-                        }}
-                        onDoubleClick={() => setRenaming(track.id)}
                       >
-                        <span className="text-[10px] text-zinc-500">
-                          {String(index + 1).padStart(2, "0")}
-                        </span>
-                        <span className="truncate">
-                          {track.name || "Untitled track"}
-                        </span>
+                        ⠿
                       </button>
-                    )}
+                      {renaming === track.id ? (
+                        <input
+                          aria-label={`Track name ${index + 1}`}
+                          value={track.name}
+                          maxLength={200}
+                          autoFocus
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) =>
+                            publish(track, { name: e.target.value })
+                          }
+                          onBlur={() => setRenaming(null)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === "Escape") {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setRenaming(null);
+                              rootRef.current?.focus({ preventScroll: true });
+                            }
+                          }}
+                          className="w-full rounded bg-zinc-950 px-1 text-xs outline-none focus:text-emerald-300"
+                        />
+                      ) : (
+                        <button
+                          className="flex h-5 w-full items-center gap-2 truncate text-left text-xs"
+                          aria-label={`Select track ${track.name}`}
+                          aria-pressed={selected === track.id}
+                          title="Select track; double-click to rename"
+                          onClick={() => {
+                            setSelected(track.id);
+                            setSelectedRegionId(null);
+                          }}
+                          onDoubleClick={() => setRenaming(track.id)}
+                        >
+                          <span className="text-[10px] text-zinc-500">
+                            {String(index + 1).padStart(2, "0")}
+                          </span>
+                          <span className="truncate">
+                            {track.name || "Untitled track"}
+                          </span>
+                        </button>
+                      )}
+                    </div>
                     <div className="flex h-10 items-center gap-1.5">
                       <button
                         className={`${button} ${track.muted ? "text-amber-300" : ""}`}
@@ -1495,14 +1788,14 @@ export function DawWidget({
                       />
                     </div>
                     {visibleRegions(track).some(
-                      (r) => !buffers.has(r.sourceId),
+                      (r) => !r.notes && !buffers.has(r.sourceId),
                     ) && (
                       <button
                         className="text-left text-[10px] text-amber-300"
                         disabled={locked}
                         onClick={() => {
                           relinkRef.current = visibleRegions(track).find(
-                            (r) => !buffers.has(r.sourceId),
+                            (r) => !r.notes && !buffers.has(r.sourceId),
                           )!;
                           inputRef.current?.click();
                         }}
@@ -1517,7 +1810,7 @@ export function DawWidget({
                       width: timelineWidth,
                       backgroundImage:
                         "linear-gradient(to right, #27272a 1px, transparent 1px)",
-                      backgroundSize: `${(5 / timelineSeconds) * timelineWidth}px 100%`,
+                      backgroundSize: `${(rulerStep / timelineSeconds) * timelineWidth}px 100%`,
                     }}
                   >
                     {visibleRegions(track).map((region) => (
@@ -1624,11 +1917,40 @@ export function DawWidget({
                         <span className="pointer-events-none absolute inset-x-0 top-0 h-6 truncate border-b border-current/20 bg-current/10 px-2 py-1 text-[10px]">
                           {region.name}
                         </span>
-                        <div className="pointer-events-none h-full pt-6">
-                          <Waveform
-                            buffer={buffers.get(region.sourceId)}
-                            track={region}
-                          />
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 top-6">
+                          {region.notes ? (
+                            <svg
+                              data-midi-region
+                              viewBox={`0 0 ${region.trimEnd - region.trimStart} 128`}
+                              preserveAspectRatio="none"
+                              className="h-full w-full"
+                              aria-hidden="true"
+                            >
+                              {region.notes.map((note, i) => (
+                                <rect
+                                  key={i}
+                                  x={note.start - region.trimStart}
+                                  y={127 - note.pitch}
+                                  width={note.duration}
+                                  height={3}
+                                  fill="currentColor"
+                                />
+                              ))}
+                            </svg>
+                          ) : (
+                            <DawWaveform
+                              buffer={buffers.get(region.sourceId)}
+                              region={region}
+                              width={
+                                (region.trimEnd - region.trimStart) *
+                                pixelsPerSecond
+                              }
+                              offset={
+                                scrollLeft - region.start * pixelsPerSecond
+                              }
+                              viewport={viewportWidth}
+                            />
+                          )}
                         </div>
                         <span
                           data-edge="left"
@@ -1655,29 +1977,63 @@ export function DawWidget({
                         <div className="absolute inset-x-0 top-0 h-6 whitespace-nowrap border-b border-red-400/30 bg-red-500/20 px-2 py-1 text-[10px]">
                           ● Recording
                         </div>
-                        <svg
-                          className="absolute bottom-0 top-6 h-[calc(100%-1.5rem)] w-full"
-                          viewBox={`0 0 ${Math.max(1, recordingSeconds * 20)} 50`}
-                          preserveAspectRatio="none"
-                          aria-hidden="true"
-                        >
-                          <path
-                            d={`M0 25H${recordingSeconds * 20}`}
-                            stroke="currentColor"
-                            strokeOpacity=".3"
-                          />
-                          <path
-                            data-live-peaks
-                            d={livePeaks
-                              .map(
-                                (p) =>
-                                  `M${p.at * 20} ${25 - p.peak * 23}v${Math.max(0.4, p.peak * 46)}`,
-                              )
-                              .join(" ")}
-                            stroke="currentColor"
-                            strokeWidth=".7"
-                          />
-                        </svg>
+                        {track.kind === "midi" ? (
+                          <svg
+                            data-live-midi
+                            viewBox={`0 0 ${Math.max(0.01, recordingSeconds)} 128`}
+                            preserveAspectRatio="none"
+                            className="absolute bottom-0 top-6 h-[calc(100%-1.5rem)] w-full"
+                            aria-hidden="true"
+                          >
+                            {[
+                              ...(midiTake.current?.notes ?? []),
+                              ...[...(midiTake.current?.held ?? [])].map(
+                                ([pitch, start]) => ({
+                                  pitch,
+                                  start,
+                                  duration: Math.max(
+                                    0.01,
+                                    recordingSeconds - start,
+                                  ),
+                                  velocity: 0.8,
+                                }),
+                              ),
+                            ].map((n, i) => (
+                              <rect
+                                key={i}
+                                x={n.start}
+                                y={127 - n.pitch}
+                                width={n.duration}
+                                height={3}
+                                fill="currentColor"
+                              />
+                            ))}
+                          </svg>
+                        ) : (
+                          <svg
+                            className="absolute bottom-0 top-6 h-[calc(100%-1.5rem)] w-full"
+                            viewBox={`0 0 ${Math.max(1, recordingSeconds * 20)} 50`}
+                            preserveAspectRatio="none"
+                            aria-hidden="true"
+                          >
+                            <path
+                              d={`M0 25H${recordingSeconds * 20}`}
+                              stroke="currentColor"
+                              strokeOpacity=".3"
+                            />
+                            <path
+                              data-live-peaks
+                              d={livePeaks
+                                .map(
+                                  (p) =>
+                                    `M${p.at * 20} ${25 - p.peak * 23}v${Math.max(0.4, p.peak * 46)}`,
+                                )
+                                .join(" ")}
+                              stroke="currentColor"
+                              strokeWidth=".7"
+                            />
+                          </svg>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1703,6 +2059,13 @@ export function DawWidget({
             </div>
           )}
         </div>
+        {selectedTrack?.kind === "midi" && (
+          <DawInstrument
+            name={selectedTrack.name}
+            onNoteOn={noteOn}
+            onNoteOff={noteOff}
+          />
+        )}
         <div className="shrink-0 border-t border-zinc-800 px-3 py-1.5 text-[10px] text-zinc-500">
           <span role="status" className="mr-2 text-emerald-300">
             {busy
@@ -1723,6 +2086,25 @@ export function DawWidget({
           }
         </div>
       </div>
+      {createTrackOpen && !minimized && (
+        <DawCreateTrackDialog
+          disabled={locked}
+          onClose={() => {
+            setCreateTrackOpen(false);
+            rootRef.current?.focus({ preventScroll: true });
+          }}
+          onChoose={(kind) => {
+            setCreateTrackOpen(false);
+            if (kind === "upload") importAudio();
+            else
+              newTrack(
+                kind === "midi" ? `Instrument ${active.length + 1}` : undefined,
+                kind === "midi" ? "midi" : "audio",
+              );
+            rootRef.current?.focus({ preventScroll: true });
+          }}
+        />
+      )}
       {menu && (
         <DawMenu
           x={menu.x}

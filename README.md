@@ -307,11 +307,16 @@ for compatibility with existing data and clients.
 
 Choose **DAW** from the widget toolbar (or **Add widget** on smaller screens).
 Use **Track → New Audio Track**, or right-click a track header, to add and manage
-tracks. Drop recordings into the window, choose **Add audio**, or press **R** to
-record into the selected track. Without a selected track, importing or recording
-creates one. Tracks can contain multiple regions; deleting a region leaves its
+tracks. **Add audio** opens a three-choice dialog: create an empty audio track,
+upload audio, or create a MIDI software-instrument track. Each uploaded or dropped
+file creates its own new track at the bottom, even when another track is selected.
+Press **R** to record into the selected track, or create one when none is selected. Tracks can contain multiple regions; deleting a region leaves its
 track and mixer settings intact. Remove tracks explicitly through the Track menu
 or their right-click menu.
+
+Drag the grip beside a track name to reorder tracks; a line shows the drop
+position. Focus a grip and use Up/Down for keyboard reordering, or Escape to
+cancel a drag. Track order is saved and shared with participants.
 
 Drag regions to move them and drag their edges to trim. The **Edit** menu and
 region right-click menu provide copy, cut, paste at playhead, duplicate, split at
@@ -323,7 +328,16 @@ after a metadata-only room import. Existing one-clip projects migrate automatica
 
 Projects support up to 30 minutes; individual uploads are limited to 50 MB and
 must use an audio format the browser can decode. Microphone recording requires
-HTTPS or localhost and microphone permission. There is no MIDI, effects, beat grid or synchronized recording/playback.
+HTTPS or localhost and microphone permission. Software-instrument tracks provide
+a basic triangle-wave synth with an on-screen C4–C5 keyboard. Record notes with
+R/Record, stop with Space/Stop, and play/export them with the rest of the mix.
+MIDI note regions are shared and saved as notes; there is no hardware MIDI input,
+MIDI-file import, piano-roll editor, effects, beat grid or synchronized transport.
+
+Zoom fully left (or **View → Fit Entire Project**) to fit the entire arrangement
+in the available timeline width. The fit updates when the window is resized.
+Waveforms include both channels and retain short peaks, with detail matched to
+the visible timeline instead of a fixed number of bars.
 
 Track settings and individual regions merge independently. Concurrent edits to
 the same region use logical revisions and a deterministic tie-breaker; removal
