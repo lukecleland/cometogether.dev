@@ -224,6 +224,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	const [positionTags, setPositionTags] = useState<PositionTag[]>(() => savedRoom?.positionTags ?? []);
 	const [connectors, setConnectors] = useState<PersistedConnector[]>(() => savedRoom?.connectors ?? []);
 	const [connectorStartId, setConnectorStartId] = useState<string | null>(null);
+	const [selectedConnectorId, setSelectedConnectorId] = useState<string | null>(null);
 	const positionTagsRef = useRef<PositionTag[]>([]);
 	positionTagsRef.current = positionTags;
 	// Tracks the highest z-index currently in use so we can raise panels on click
@@ -1343,6 +1344,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 
 	const removeConnector = useCallback((id: string) => {
 		setConnectors(previous => previous.filter(connector => connector.id !== id));
+		setSelectedConnectorId(previous => previous === id ? null : previous);
 		sendSync({ type: 'connector-remove', id });
 	}, [sendSync]);
 
@@ -2697,14 +2699,27 @@ export function Session({ roomCode, isHost }: SessionProps) {
 					// its children. Let those empty areas reach the whiteboard.
 					pointerEvents: 'none'
 				}}>
-				<svg className="absolute inset-0 z-[4] overflow-visible" width="100%" height="100%" aria-hidden="true">
+				<svg className="absolute inset-0 z-[4] overflow-visible" width="100%" height="100%" aria-label="Panel connections">
 					{connectors.map(connector => {
 						const from = dynamicPanels.find(panel => panel.id === connector.fromPanelId)?.state;
 						const to = dynamicPanels.find(panel => panel.id === connector.toPanelId)?.state;
 						if (!from || !to) return null;
 						const start = panelAnchor(from, to);
 						const end = panelAnchor(to, from);
-						return <g key={connector.id}>
+						return <g key={connector.id} data-connector={connector.id} role="button" tabIndex={wbTool === 'pointer' || wbTool === 'connector' ? 0 : -1}
+							aria-label="Select connection" aria-pressed={selectedConnectorId === connector.id}
+							className="cursor-pointer outline-none"
+							onFocus={() => setSelectedConnectorId(connector.id)} onBlur={() => setSelectedConnectorId(null)}
+							onMouseDown={event => event.stopPropagation()}
+							onPointerDown={event => { event.preventDefault(); event.stopPropagation(); event.currentTarget.focus(); setSelectedConnectorId(connector.id); }}
+							onKeyDown={event => {
+								if (event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+								if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); event.stopPropagation(); removeConnector(connector.id); }
+								if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); event.currentTarget.blur(); }
+							}}>
+							<title>Connection · Delete to remove</title>
+							{selectedConnectorId === connector.id && <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="#c4b5fd" strokeWidth={connector.width + 8 / canvas.scale} strokeLinecap="round" />}
+							<line data-connector-hit x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="transparent" strokeWidth={Math.max(16, connector.width * canvas.scale + 8)} vectorEffect="non-scaling-stroke" style={{ pointerEvents: !isPanMode && (wbTool === 'pointer' || wbTool === 'connector') ? 'stroke' : 'none' }} />
 							<line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="#18181b" strokeWidth={connector.width + 4} strokeLinecap="round" />
 							<line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke={connector.color} strokeWidth={connector.width} strokeLinecap="round" />
 							<circle cx={start.x} cy={start.y} r={Math.max(4, connector.width)} fill={connector.color} stroke="#18181b" strokeWidth="2" />
