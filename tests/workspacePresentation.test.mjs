@@ -8,14 +8,17 @@ function load(path, imports = {}) {
   vm.runInNewContext(ts.transpileModule(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, scope);
   return scope.exports;
 }
-test('landing shuffle starts make/work and returns to work without splitting the lyric', () => {
-  const { BRAND_WORDS: words } = load('src/utils/brandWords.ts');
+test('landing shuffle starts make/work and returns to make with a double hold without splitting the lyric', () => {
+  const { BRAND_WORDS: words, brandWordDuration } = load('src/utils/brandWords.ts');
   assert.equal(words[0], 'make'); assert.equal(words[1], 'work');
   for (const word of ['sing','laugh','party','sketch','build','develop','write','compose','code','grow']) assert.ok(words.includes(word));
   const start = words.indexOf('stop'); assert.equal(words.slice(start, start + 3).join(','), 'stop,collaborate,listen');
+  assert.equal(words.filter(word => word === 'work').length, 1);
+  assert.notEqual(words.at(-1), 'make');
+  for (const word of words) assert.equal(brandWordDuration(word), word === 'make' ? 5200 : 2600);
   let since = 0;
-  for (const word of words.slice(2)) {
-    if (word === 'work') { assert.ok(since >= 4 && since <= 6); since = 0; }
+  for (const word of words.slice(1)) {
+    if (word === 'make') { assert.ok(since >= 4 && since <= 6); since = 0; }
     else since++;
   }
 });
