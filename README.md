@@ -1,4 +1,4 @@
-# maketogether
+# Make Together
 
 A live peer-to-peer workspace for video chat, shared media, drawing and music
 collaboration. Create a room, share its link and work together without an
@@ -12,7 +12,7 @@ between participants over WebRTC; PeerJS Cloud is used for signalling.
 ### Rooms and video
 
 - Up to four participants in a full peer-to-peer mesh
-- Compact portrait camera and microphone panels for each participant
+- Wider portrait camera and microphone panels for each participant
 - Local microphone mute and camera on/off controls without leaving the room
 - Data-only participation when camera or microphone access is denied or
   unavailable
@@ -44,8 +44,10 @@ between participants over WebRTC; PeerJS Cloud is used for signalling.
   arrange waveform clips, trim, duplicate, rename, mute/solo, adjust gain and pan,
   and export a stereo WAV mix. Edits and source recordings are shared with peers;
   playback and recording transport stay local.
-- **Record player** — load an audio file into an animated top-down turntable;
-  play, pause and seek state is shared
+- **Audio player** — compact Digital player by default, with a theme dropdown
+  for Record player and Tape deck. Tape reels rotate during playback and
+  mechanical controls include ten-second rewind/forward. Themes, play, pause
+  and seek state are shared and saved.
 - **Screen sharing** — share a browser tab or window to browse together. The mini
   browser is disabled while reliable browsing sync is unavailable.
 - **Sticky notes** — switch between text, guitar chord diagrams and tablature;
@@ -72,6 +74,10 @@ place; restoring never moves or zooms the canvas.
 
 ### Sharing and navigation
 
+- **Fit Screen** frames all canvas content; **Show all** opens a temporary
+  Mission Control-style overview of live panels, including minimized panels.
+  Select one to focus it, or use Done/Escape to return. Both system controls
+  stay at bottom right, separate from the shared dock.
 - A shared dock acts as a set of bookmarks into the canvas
 - Tag, rename, remove and jump to panels without relocating them
 - Ping a dock entry to draw the other participants' attention

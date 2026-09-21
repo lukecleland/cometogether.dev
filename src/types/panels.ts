@@ -1,3 +1,4 @@
+import type { AudioTheme } from '../utils/audioTheme';
 import type { BrowserScroll } from "../utils/browserUrl";
 import type { BoardContent } from "../utils/whiteboardPanel";
 import type { DawTrack } from "../utils/daw";
@@ -123,4 +124,5 @@ export interface DynamicPanel {
   initialUrl?: string;
   browserScroll?: BrowserScroll;
   pdfPage?: number;
+  audioTheme?: AudioTheme;
 }

@@ -1,3 +1,4 @@
+import type { AudioTheme } from './audioTheme';
 import type { BrowserScroll } from "./browserUrl";
 import type { BoardContent } from "./whiteboardPanel";
 import type { DawTrack } from "./daw";
@@ -28,6 +29,7 @@ export interface PersistedPanel {
   initialUrl?: string;
   browserScroll?: BrowserScroll;
   pdfPage?: number;
+  audioTheme?: AudioTheme;
   note?: NoteContent;
   code?: CodeContent;
   audioFileName?: string;

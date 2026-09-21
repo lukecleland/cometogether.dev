@@ -57,8 +57,6 @@ interface DockProps {
   onPing: (id: string) => void;
   /** Participant chips use double-click for peer viewport actions. */
   onParticipantDoubleClick: (entry: DockEntry) => void;
-  /** Frame every item currently present on the shared canvas. */
-  onShowAll: () => void;
 }
 
 function DockIcon({ type }: { type: DockEntry["type"] }) {
@@ -196,7 +194,7 @@ export function DockButton({
   );
 }
 
-export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipantDoubleClick, onShowAll }: DockProps) {
+export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipantDoubleClick }: DockProps) {
   // Chips that have just been pinged, so the sender gets confirmation it went
   const [pinged, setPinged] = useState<string[]>([]);
   const pingTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -243,23 +241,12 @@ export function Dock({ entries, onJump, onRemove, onRename, onPing, onParticipan
       data-dock
       role="navigation"
       aria-label="Canvas dock"
-      className="fixed left-[20%] right-[20%] flex flex-wrap justify-center gap-1 max-h-[40dvh] overflow-y-auto overflow-x-hidden pointer-events-none [&>*]:pointer-events-auto"
+      className="fixed left-3 right-[168px] sm:left-[20%] sm:right-[20%] flex flex-wrap justify-center gap-1 max-h-[40dvh] overflow-y-auto overflow-x-hidden pointer-events-none [&>*]:pointer-events-auto"
       style={{
         zIndex: 999,
         bottom: "calc(1rem + env(safe-area-inset-bottom))",
       }}
     >
-      <button
-        onClick={onShowAll}
-        className="flex min-w-0 max-w-full min-h-8 shrink-0 items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white"
-        title="Zoom to fit all canvas content"
-        aria-label="Show all canvas content"
-      >
-        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
-        </svg>
-        <span>Show all</span>
-      </button>
       {entries.map((entry) =>
         editingId === entry.id ? (
           // ── Rename mode ──

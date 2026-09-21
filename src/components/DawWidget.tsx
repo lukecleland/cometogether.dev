@@ -1801,7 +1801,7 @@ export function DawWidget({
           {!active.length ? (
             <div className="flex h-full min-h-32 flex-col items-center justify-center gap-2 px-5 text-center">
               <span className="text-3xl text-emerald-400">♫</span>
-              <p className="text-sm">Build a mix together</p>
+              <p className="text-sm">Make Music Together</p>
               <p className="max-w-sm text-xs text-zinc-500">
                 Drop recordings here, add audio files, or record a take. Each
                 track can hold multiple audio regions. Use Track → New Audio

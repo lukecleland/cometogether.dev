@@ -40,7 +40,7 @@ interface SummonButtonProps {
   variant?: "bar" | "prompt";
 }
 
-const INVITE_TEXT = "Join my maketogether room:";
+const INVITE_TEXT = "Join my Make Together room:";
 
 /**
  * iOS and Android disagree on `sms:` parameter syntax — iOS wants `&body=`
@@ -132,7 +132,7 @@ export function SummonButton({ roomCode, variant = "bar" }: SummonButtonProps) {
     // silently refuses to open the sheet.
     if (prefersNativeSheet()) {
       navigator
-        .share({ title: "maketogether", text: INVITE_TEXT, url })
+        .share({ title: "Make Together", text: INVITE_TEXT, url })
         .catch(() => {
           // Cancelling the sheet rejects too; there is nothing to report
         });
@@ -170,7 +170,7 @@ export function SummonButton({ roomCode, variant = "bar" }: SummonButtonProps) {
         key: "email",
         label: "Email",
         href: `mailto:?subject=${encodeURIComponent(
-          "Join my maketogether room",
+          "Join my Make Together room",
         )}&body=${encodeURIComponent(message)}`,
       },
     ];

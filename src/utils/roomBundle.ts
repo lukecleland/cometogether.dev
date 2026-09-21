@@ -62,6 +62,7 @@ function isRecording(value: unknown): boolean {
 
 function isPanel(value: unknown): boolean {
   if (!isObject(value) || typeof value.id !== "string" || typeof value.type !== "string" || !PANEL_TYPES.has(value.type) || !hasPanelState(value.state)) return false;
+  if (value.audioTheme !== undefined && !["digital", "record", "tape"].includes(value.audioTheme as string)) return false;
   if (value.pdfPage !== undefined && (typeof value.pdfPage !== "number" || !Number.isSafeInteger(value.pdfPage) || value.pdfPage < 1)) return false;
   if (value.pdfFileName !== undefined && typeof value.pdfFileName !== "string") return false;
   if (value.browserScroll !== undefined && !validBrowserScroll(value.browserScroll)) return false;
@@ -109,7 +110,7 @@ export function parseRoomBundle(source: string): RoomSnapshot {
     throw new Error("That file is not valid JSON.");
   }
   if (!isObject(parsed) || parsed.format !== BUNDLE_FORMAT || parsed.version !== BUNDLE_VERSION) {
-    throw new Error("That is not a supported maketogether room bundle.");
+    throw new Error("That is not a supported Make Together room bundle.");
   }
   if (!isSnapshot(parsed.snapshot)) {
     throw new Error(`This bundle is damaged or uses an unsupported room-state version (expected ${ROOM_STATE_VERSION}).`);

@@ -1,6 +1,7 @@
+import { BRAND_WORDS } from '../utils/brandWords';
 import { Toast } from '../components/Toast';
 import { BrandMark } from "../components/BrandMark";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { generateCode, getCodeFromURL, setCodeInURL } from "../utils/roomCode";
 
 interface HomeProps {
@@ -8,6 +9,13 @@ interface HomeProps {
 }
 
 export function Home({ onStart }: HomeProps) {
+  const [wordIndex, setWordIndex] = useState(0);
+  useEffect(() => {
+    const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (motion.matches) return;
+    const timer = setTimeout(() => setWordIndex(index => (index + 1) % BRAND_WORDS.length), wordIndex === 0 ? 4400 : 2600);
+    return () => clearTimeout(timer);
+  }, [wordIndex]);
   const prefilled = getCodeFromURL() ?? "";
   const [joinCode, setJoinCode] = useState(prefilled);
   const [joinError, setJoinError] = useState("");
@@ -35,12 +43,11 @@ export function Home({ onStart }: HomeProps) {
         <div className="text-center mb-10">
           <BrandMark rounded className="mx-auto mb-5 h-16 w-16" />
           <h1 className="landing-brand brand-wordmark font-semibold text-white tracking-tight">
-            <span className="sr-only">maketogether</span>
+            <span className="sr-only">Make Together</span>
             <span aria-hidden="true" className="grid grid-cols-2 items-baseline">
               <span className="brand-words text-brand-300">
-                {["make", "watch", "create", "record", "jam", "learn", "stop", "collaborate", "listen"].map((word, index) => (
-                  <span key={word} className="brand-word" style={{ animationDelay: `${index * 2.6 + (index > 0 ? 1.82 : 0) - 0.4}s` }}>{word}</span>
-                ))}
+                <span className="brand-word-sizer">collaborate</span>
+                <span key={wordIndex} className="brand-word">{BRAND_WORDS[wordIndex]}</span>
               </span>
               <span className="text-left">together</span>
             </span>
