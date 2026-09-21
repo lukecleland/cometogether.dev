@@ -251,8 +251,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	const [recorderStatuses, setRecorderStatuses] = useState<Record<string, RecordingStatus>>({});
 	const [widgetMenuOpen, setWidgetMenuOpen] = useState(false);
 	const widgetMenuRef = useRef<HTMLDivElement>(null);
-	const pdfInputRef = useRef<HTMLInputElement>(null);
-	const imageInputRef = useRef<HTMLInputElement>(null);
+	const imagePdfInputRef = useRef<HTMLInputElement>(null);
 	const roomBundleInputRef = useRef<HTMLInputElement>(null);
 	const [bundleNotice, setBundleNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
 
@@ -2357,18 +2356,19 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						});
 				}
 			}}>
-			<input ref={pdfInputRef} type="file" accept="application/pdf,.pdf" multiple className="hidden" onChange={event => {
-				Array.from(event.target.files ?? []).forEach((file, index) => { void addPdf(file, window.innerWidth / 2 + index * 30, window.innerHeight / 2 + index * 30); });
-				event.target.value = '';
-			}} />
 			<input
-				ref={imageInputRef}
+				ref={imagePdfInputRef}
 				type="file"
-				accept="image/*"
+				accept="image/*,application/pdf,.pdf"
+				multiple
 				className="hidden"
 				onChange={event => {
-					const file = event.target.files?.[0];
-					if (file) void addImage(file, window.innerWidth / 2, window.innerHeight / 2);
+					Array.from(event.target.files ?? []).forEach((file, index) => {
+						const x = window.innerWidth / 2 + index * 30;
+						const y = window.innerHeight / 2 + index * 30;
+						if (isPdfFile(file)) void addPdf(file, x, y);
+						else void addImage(file, x, y);
+					});
 					event.target.value = '';
 				}}
 			/>
@@ -2460,15 +2460,14 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						className="grid w-full grid-cols-[1.25rem_1fr] items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-left text-xs font-medium text-zinc-300 hover:bg-zinc-700">
 						<svg className="h-4 w-4 text-brand-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="18" height="14" rx="2" /><path d="m8 21 4-4 4 4M7 12l3-4 3 3 4-4" /></svg><span>Whiteboard</span>
 					</button>
-					<button onClick={() => pdfInputRef.current?.click()} className="w-full text-left bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs font-medium px-3 py-2 rounded-lg" title="Add PDFs">PDF</button>
 					<button
-						onClick={() => imageInputRef.current?.click()}
+						onClick={() => imagePdfInputRef.current?.click()}
 						className="grid w-full grid-cols-[1.25rem_1fr] items-center gap-1.5 text-left [&>:first-child]:justify-self-center bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 border border-zinc-700 text-zinc-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors"
-						title="Add an image">
+						title="Add images or PDFs">
 						<svg className="h-3.5 w-3.5 shrink-0 text-fuchsia-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
 							<rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path strokeLinecap="round" strokeLinejoin="round" d="M4 17l5-5 3.5 3.5 2-2L20 19" />
 						</svg>
-						<span>Image</span>
+						<span>Image / PDF</span>
 					</button>
 					<button
 						onClick={() => spawnPanel('note', window.innerWidth / 2, window.innerHeight / 2)}
@@ -2550,14 +2549,13 @@ export function Session({ roomCode, isHost }: SessionProps) {
 								className="w-full text-left px-2.5 py-2 text-xs text-violet-300 rounded-lg hover:bg-zinc-800 disabled:opacity-50">
 								{screenShare.sharing ? 'Stop sharing' : 'Share screen'}
 							</button>
-							<button onClick={() => { pdfInputRef.current?.click(); setWidgetMenuOpen(false); }} className="w-full text-left px-2.5 py-2 text-xs text-zinc-200 rounded-lg hover:bg-zinc-800" title="Add PDFs">PDF</button>
 							<button
 								onClick={() => {
-									imageInputRef.current?.click();
+									imagePdfInputRef.current?.click();
 									setWidgetMenuOpen(false);
 								}}
 								className="w-full text-left px-2.5 py-2 text-xs text-zinc-200 rounded-lg hover:bg-zinc-800 transition-colors">
-								Image
+								Image / PDF
 							</button>
 							<button
 								onClick={() => {
