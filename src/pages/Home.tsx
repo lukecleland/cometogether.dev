@@ -1,4 +1,4 @@
-import { BRAND_WORDS } from '../utils/brandWords';
+import { BRAND_WORDS, brandWordDuration } from '../utils/brandWords';
 import { Toast } from '../components/Toast';
 import { BrandMark } from "../components/BrandMark";
 import { useEffect, useState } from "react";
@@ -13,7 +13,7 @@ export function Home({ onStart }: HomeProps) {
   useEffect(() => {
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
     if (motion.matches) return;
-    const timer = setTimeout(() => setWordIndex(index => (index + 1) % BRAND_WORDS.length), wordIndex === 0 ? 4400 : 2600);
+    const timer = setTimeout(() => setWordIndex(index => (index + 1) % BRAND_WORDS.length), brandWordDuration(BRAND_WORDS[wordIndex]));
     return () => clearTimeout(timer);
   }, [wordIndex]);
   const prefilled = getCodeFromURL() ?? "";
