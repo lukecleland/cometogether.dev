@@ -440,3 +440,12 @@ Choose **Share screen** in the right-hand controls (or the mobile **Add widget**
 ### Joining an existing room
 
 New participants automatically request the current room snapshot from the active room owner, then receive its media files. This restores shared panels, notes, code, drawings, DAW tracks and saved playback state. Responses are addressed to the newcomer, so joining does not reset other participants’ views. The handshake retries while connecting and also works after another participant takes over the room.
+
+### Link previews
+
+Slack and other link crawlers receive Open Graph and large-image card metadata
+in the initial HTML, including a public 1200 × 630 PNG. Run
+`npm run social:generate` to regenerate `public/social-preview-v1.png` from the
+existing brand mark and Outfit font. When replacing the artwork, use a new image
+filename in both the generator and metadata so cached images can refresh. Room
+invitation URLs retain their `?room=` parameter.
