@@ -1,3 +1,4 @@
+import type { AudioTheme } from './audioTheme';
 import type { BrowserScroll } from "./browserUrl";
 import type { BoardContent } from "./whiteboardPanel";
 import type { DawTrack } from "./daw";
@@ -20,17 +21,20 @@ export interface PersistedRecording {
 
 export interface PersistedPanel {
   id: string;
-  type: "youtube" | "audio" | "browser" | "note" | "code" | "recorder" | "image" | "daw" | "whiteboard";
+  type: "youtube" | "audio" | "browser" | "note" | "code" | "recorder" | "image" | "daw" | "whiteboard" | "pdf";
   state: PanelState;
   dawTracks?: DawTrack[];
   whiteboard?: BoardContent;
   initialVideoId?: string;
   initialUrl?: string;
   browserScroll?: BrowserScroll;
+  pdfPage?: number;
+  audioTheme?: AudioTheme;
   note?: NoteContent;
   code?: CodeContent;
   audioFileName?: string;
   imageFileName?: string;
+  pdfFileName?: string;
   recordings?: PersistedRecording[];
   playback?: PersistedPlayback;
 }

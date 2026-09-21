@@ -1,5 +1,6 @@
+import { PanelOverviewContext } from './PanelOverviewContext';
 import { useMovementSync } from "../hooks/useMovementSync";
-import { useEffect, useRef } from "react";
+import { useContext, useEffect, useRef } from "react";
 import Draggable, {
   type DraggableEvent,
   type DraggableData,
@@ -133,6 +134,8 @@ export function DraggablePanel({
   onMinimize,
   minimizeControlHandled = false,
 }: DraggablePanelProps) {
+  const overview = useContext(PanelOverviewContext);
+  const frame = panelId ? overview?.frames[panelId] : undefined;
   const nodeRef = useRef<HTMLDivElement>(null);
   // Always-current copy of state so resize closure doesn't go stale
   const stateRef = useRef(state);
@@ -250,7 +253,8 @@ export function DraggablePanel({
   return (
     <Draggable
       nodeRef={nodeRef as React.RefObject<HTMLElement>}
-      position={{ x: state.x, y: state.y }}
+      position={{ x: frame?.x ?? state.x, y: frame?.y ?? state.y }}
+      disabled={!!frame}
       onDrag={handleDrag}
       onStop={handleDragStop}
       // The panel itself is the drag handle. Native controls and explicitly
@@ -263,16 +267,17 @@ export function DraggablePanel({
         {...(excludeFromRecording ? { "data-recording-exclude": true } : {})}
         ref={nodeRef}
         style={{
-          width: state.width,
-          height: state.height,
-          zIndex: state.z,
+          width: frame?.width ?? state.width,
+          height: frame?.height ?? state.height,
+          zIndex: frame ? 1 : state.z,
           // The full-screen transformed parent is click-through so it cannot
           // block whiteboard strokes; only visible panels opt back in.
           pointerEvents: "auto",
         }}
         className={`draggable-panel absolute ${className}`}
-        onPointerDown={onBringToFront}
+        onPointerDown={frame ? undefined : onBringToFront}
         onDoubleClick={(event) => {
+          if (frame) return;
           const target = event.target as HTMLElement;
           if (
             target.closest(
@@ -286,7 +291,8 @@ export function DraggablePanel({
         <div
           data-panel-shell={panelId}
           className="relative h-full w-full"
-          style={{ opacity: minimized ? 0 : 1, pointerEvents: minimized ? "none" : "auto" }}
+          inert={!!frame}
+          style={{ opacity: minimized && !frame ? 0 : 1, pointerEvents: frame || minimized ? "none" : "auto", ...(frame ? { width: state.width, height: state.height, transform: `scale(${frame.scale})`, transformOrigin: 'top left' } : {}) }}
         >
         {children}
 
@@ -319,6 +325,9 @@ export function DraggablePanel({
           />
         ))}
         </div>
+        {frame && <button data-overview-select={panelId} onClick={() => panelId && overview?.onSelect(panelId)} aria-label={`Open ${frame.label}`} className="overview-select absolute inset-0 rounded-xl border-2 border-white/15 shadow-2xl outline-none hover:border-brand-300 focus-visible:border-brand-300">
+          <span className="absolute -bottom-7 left-0 w-full truncate text-center text-xs font-medium text-white">{frame.label}{minimized ? ' · minimized' : ''}</span>
+        </button>}
       </div>
     </Draggable>
   );

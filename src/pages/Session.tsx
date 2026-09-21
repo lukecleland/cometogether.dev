@@ -1,3 +1,9 @@
+import { CanvasSystemControls } from '../components/CanvasSystemControls';
+import { PanelOverviewContext } from '../components/PanelOverviewContext';
+import { layoutOverview } from '../utils/panelOverview';
+import { validAudioTheme } from '../utils/audioTheme';
+import { PdfWidget } from '../components/PdfWidget';
+import { isPdfFile, preparePdf, validPdfPage } from '../utils/pdf';
 import { BROWSER_ENABLED } from '../utils/features';
 import { normaliseBrowserUrl, validBrowserScroll } from "../utils/browserUrl";
 import { WhiteboardWidget } from "../components/WhiteboardWidget";
@@ -155,10 +161,10 @@ function panelAnchor(panel: PanelState, toward: PanelState): { x: number; y: num
 // ─────────────────────────────────────────────────────────────────────────
 
 function defaultFixedPanels(): Record<PanelId, PanelState> {
-	// Participant feeds default to a compact portrait card. They remain freely
+	// Participant feeds default to a wider portrait card. They remain freely
 	// resizable, and persisted room geometry still wins when a room is restored.
-	const videoW = 236;
-	const videoH = 420;
+	const videoW = 300;
+	const videoH = 400;
 	const topY = 112;
 	return {
 		local: { x: 460, y: topY, width: videoW, height: videoH, z: 10 },
@@ -218,12 +224,14 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		initialVideoId: panel.initialVideoId,
 		initialUrl: panel.initialUrl,
 		browserScroll: panel.browserScroll,
+		pdfPage: panel.pdfPage,
+		audioTheme: panel.audioTheme,
 		note: panel.note,
 		code: panel.code,
 		whiteboard: panel.whiteboard,
 		dawTracks: panel.dawTracks ? normaliseDawTracks(panel.dawTracks) : undefined,
 		playback: panel.playback,
-		mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : undefined,
+		mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : panel.type === 'pdf' ? panel.pdfFileName : undefined,
 		recordingMetadata: panel.recordings,
 		recordings: []
 	})) ?? []);
@@ -243,6 +251,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	const [recorderStatuses, setRecorderStatuses] = useState<Record<string, RecordingStatus>>({});
 	const [widgetMenuOpen, setWidgetMenuOpen] = useState(false);
 	const widgetMenuRef = useRef<HTMLDivElement>(null);
+	const pdfInputRef = useRef<HTMLInputElement>(null);
 	const imageInputRef = useRef<HTMLInputElement>(null);
 	const roomBundleInputRef = useRef<HTMLInputElement>(null);
 	const [bundleNotice, setBundleNotice] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
@@ -259,6 +268,32 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	const [canvas, setCanvas] = useState(() => savedRoom?.canvas ?? { x: 0, y: 0, scale: 1 });
 	const canvasStateRef = useRef({ x: 0, y: 0, scale: 1 });
 	canvasStateRef.current = canvas;
+	const [overviewOpen, setOverviewOpen] = useState(false);
+	const overviewOpenRef = useRef(false);
+	overviewOpenRef.current = overviewOpen;
+	const [overviewSize, setOverviewSize] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
+	useEffect(() => {
+		const resized = () => setOverviewSize({ width: window.innerWidth, height: window.innerHeight });
+		window.addEventListener('resize', resized);
+		return () => window.removeEventListener('resize', resized);
+	}, []);
+	useEffect(() => {
+		if (!overviewOpen) return;
+		const previous = document.activeElement as HTMLElement | null;
+		const selectors = '[data-overview-select], [data-overview-close]';
+		document.querySelector<HTMLElement>(selectors)?.focus();
+		const keydown = (event: KeyboardEvent) => {
+			if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); setOverviewOpen(false); }
+			else if (event.key === 'Tab') {
+				const buttons = Array.from(document.querySelectorAll<HTMLElement>(selectors));
+				const index = buttons.indexOf(document.activeElement as HTMLElement);
+				event.preventDefault(); event.stopImmediatePropagation();
+				buttons[(index + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus();
+			}
+		};
+		document.addEventListener('keydown', keydown, true);
+		return () => { document.removeEventListener('keydown', keydown, true); previous?.focus(); };
+	}, [overviewOpen]);
 	const [isPanMode, setIsPanMode] = useState(false);
 	const [isGrabbing, setIsGrabbing] = useState(false);
 	const isPanningRef = useRef(false);
@@ -370,7 +405,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				const file = await loadRoomMedia(roomCode, persisted.id);
 				if (!cancelled && !ignoreLocalHydrationRef.current && file) setDynamicPanels(prev => prev.map(panel => panel.id === persisted.id ? { ...panel, initialFile: file } : panel));
 			}
-			if (persisted.type === 'image' && persisted.imageFileName) {
+			if ((persisted.type === 'image' && persisted.imageFileName) || (persisted.type === 'pdf' && persisted.pdfFileName)) {
 				const file = await loadRoomMedia(roomCode, persisted.id);
 				if (!cancelled && !ignoreLocalHydrationRef.current && file) setDynamicPanels(prev => prev.map(panel => panel.id === persisted.id ? { ...panel, initialFile: file } : panel));
 			}
@@ -406,12 +441,15 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				initialVideoId: panel.initialVideoId,
 				initialUrl: panel.initialUrl,
 				browserScroll: panel.browserScroll,
+				pdfPage: panel.pdfPage,
+				audioTheme: panel.audioTheme,
 				note: panel.note,
 				code: panel.code,
 				whiteboard: panel.whiteboard,
 				dawTracks: panel.dawTracks ? normaliseDawTracks(panel.dawTracks) : undefined,
 				audioFileName: panel.type === 'audio' ? panel.initialFile?.name ?? panel.mediaFileName ?? savedRoom?.panels.find(saved => saved.id === panel.id)?.audioFileName : undefined,
 				imageFileName: panel.type === 'image' ? panel.initialFile?.name ?? panel.mediaFileName ?? savedRoom?.panels.find(saved => saved.id === panel.id)?.imageFileName : undefined,
+				pdfFileName: panel.type === 'pdf' ? panel.initialFile?.name ?? panel.mediaFileName ?? savedRoom?.panels.find(saved => saved.id === panel.id)?.pdfFileName : undefined,
 				recordings: recordingMetadataFor(panel) ?? savedRoom?.panels.find(saved => saved.id === panel.id)?.recordings,
 				playback: panel.playback
 			})),
@@ -548,12 +586,14 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			initialVideoId: panel.initialVideoId,
 			initialUrl: panel.initialUrl,
 			browserScroll: panel.browserScroll,
+			pdfPage: panel.pdfPage,
+			audioTheme: panel.audioTheme,
 			note: panel.note,
 			code: panel.code,
 			whiteboard: panel.whiteboard,
 			dawTracks: panel.dawTracks ? normaliseDawTracks(panel.dawTracks) : undefined,
 			playback: panel.playback,
-			mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : undefined,
+			mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : panel.type === 'pdf' ? panel.pdfFileName : undefined,
 			recordingMetadata: panel.recordings,
 			recordings: []
 		})));
@@ -578,12 +618,14 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			initialVideoId: panel.initialVideoId,
 			initialUrl: panel.initialUrl,
 			browserScroll: panel.browserScroll,
+			pdfPage: panel.pdfPage,
+			audioTheme: panel.audioTheme,
 			note: panel.note,
 			code: panel.code,
 			whiteboard: panel.whiteboard,
 			dawTracks: panel.dawTracks ? normaliseDawTracks(panel.dawTracks) : undefined,
 			playback: panel.playback,
-			mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : undefined,
+			mediaFileName: panel.type === 'audio' ? panel.audioFileName : panel.type === 'image' ? panel.imageFileName : panel.type === 'pdf' ? panel.pdfFileName : undefined,
 			recordingMetadata: panel.recordings,
 			recordings: []
 		}));
@@ -613,7 +655,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		// Bundles intentionally omit media bytes. If this browser still has files
 		// for the same room and panel ids, quietly reconnect them after restore.
 		void Promise.all(snapshot.panels.map(async panel => {
-			if ((panel.type === 'audio' && panel.audioFileName) || (panel.type === 'image' && panel.imageFileName)) {
+			if ((panel.type === 'audio' && panel.audioFileName) || (panel.type === 'image' && panel.imageFileName) || (panel.type === 'pdf' && panel.pdfFileName)) {
 				const file = await loadRoomMedia(roomCode, panel.id).catch(() => null);
 				if (file) setDynamicPanels(previous => previous.map(item => item.id === panel.id ? { ...item, initialFile: file } : item));
 			}
@@ -720,6 +762,14 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			setViewSuggestion({ from: msg.id, canvas: msg.canvas });
 			return;
 		}
+		if (msg.type === 'audio-theme') {
+			if (validAudioTheme(msg.theme)) setDynamicPanels(previous => previous.map(panel => panel.id === msg.id && panel.type === 'audio' ? { ...panel, audioTheme: msg.theme } : panel));
+			return;
+		}
+		if (msg.type === 'pdf-page') {
+			if (validPdfPage(msg.page)) setDynamicPanels(previous => previous.map(panel => panel.id === msg.id && panel.type === 'pdf' ? { ...panel, pdfPage: msg.page } : panel));
+			return;
+		}
 		if (msg.type === 'browser-load') {
 			const url = normaliseBrowserUrl(msg.url);
 			if (url) {
@@ -799,6 +849,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			]);
 		} else if (msg.type === 'spawn-whiteboard') {
 			setDynamicPanels(previous => previous.some(panel => panel.id === msg.id) ? previous : [...previous, { id: msg.id, type: 'whiteboard', state: denormalisePanel(msg.state) }]);
+		} else if (msg.type === 'spawn-pdf') {
+			setDynamicPanels(prev => prev.some(panel => panel.id === msg.id) ? prev : [...prev, { id: msg.id, type: 'pdf', state: denormalisePanel(msg.state) }]);
 		} else if (msg.type === 'spawn-image') {
 			setDynamicPanels(prev => [...prev, { id: msg.id, type: 'image', state: denormalisePanel(msg.state) }]);
 		} else if (msg.type === 'spawn-audio') {
@@ -1456,10 +1508,10 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	// Fly the viewport so the given panel sits in the middle of the screen at a
 	// size that's actually usable for its content. The panel itself never moves
 	// — the dock is navigation, not relocation; only the viewport changes.
-	const jumpToPanel = (id: string) => {
+	const jumpToPanel = (id: string, focusRestored = false) => {
 		if (minimizedIds.includes(id)) {
-			restorePanel(id);
-			return;
+			if (!focusRestored) { restorePanel(id); return; }
+			setMinimizedIds(previous => previous.filter(item => item !== id));
 		}
 		// Going there counts as seeing it
 		acknowledgePulse(id);
@@ -1520,6 +1572,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			recorder: 720,
 			daw: 900,
 			image: 680,
+			pdf: 760,
 			position: 0
 		};
 
@@ -1598,7 +1651,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			const firstLine = text.split('\n')[0].trim();
 			if (kind === 'text' && firstLine) return firstLine.slice(0, 40);
 		}
-		const base = panel.type === 'whiteboard' ? 'Whiteboard' : panel.type === 'daw' ? 'DAW' : panel.type === 'youtube' ? 'YouTube' : panel.type === 'note' ? 'Note' : panel.type === 'browser' ? 'Browser' : panel.type === 'code' ? 'Code' : panel.type === 'recorder' ? 'Recorder' : panel.type === 'image' ? 'Image' : 'Audio';
+		const base = panel.type === 'pdf' ? 'PDF' : panel.type === 'whiteboard' ? 'Whiteboard' : panel.type === 'daw' ? 'Make Music Together' : panel.type === 'youtube' ? 'YouTube' : panel.type === 'note' ? 'Note' : panel.type === 'browser' ? 'Browser' : panel.type === 'code' ? 'Code' : panel.type === 'recorder' ? 'Recorder' : panel.type === 'image' ? 'Image' : 'Audio';
 		const sameType = dynamicPanels.filter(p => p.type === panel.type);
 		if (sameType.length < 2) return base;
 		return `${base} ${sameType.findIndex(p => p.id === panel.id) + 1}`;
@@ -1652,7 +1705,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		sendSync({ type: 'view-request', id: entry.id });
 	};
 
-	const showAll = () => {
+	const fitScreen = () => {
+		setOverviewOpen(false);
 		const bounds: Array<{ x: number; y: number; width: number; height: number }> = [];
 		if (localStream?.getTracks().length) bounds.push(fixedPanels.local);
 		bounds.push(...Object.values(remotePanelStates), ...dynamicPanels.map(panel => panel.state));
@@ -1682,6 +1736,13 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		const scale = Math.max(0.25, Math.min(4, (window.innerWidth * 0.9) / width, (window.innerHeight * 0.78) / height));
 		setCanvas({ x: window.innerWidth / 2 - (minX + width / 2) * scale, y: window.innerHeight / 2 - (minY + height / 2) * scale, scale });
 	};
+
+	const overviewItems = [
+		...(localStream?.getTracks().length ? [{ id: 'local', label: customLabels.local ?? 'You', ...fixedPanels.local }] : []),
+		...remoteStreams.flatMap(({ peerId }, index) => remotePanelStates[peerId] ? [{ id: remotePanelId(peerId), label: customLabels[remotePanelId(peerId)] ?? `Guest ${index + 1}`, ...remotePanelStates[peerId] }] : []),
+		...dynamicPanels.map(panel => ({ id: panel.id, label: customLabels[panel.id] ?? panelLabels[panel.id] ?? fallbackLabel(panel), ...panel.state })),
+	];
+	const overview = overviewOpen ? { frames: layoutOverview(overviewItems, overviewSize), onSelect: (id: string) => { setOverviewOpen(false); jumpToPanel(id, true); } } : null;
 
 	// Empty string clears the custom name and reverts to the automatic label.
 	// Shared, since these are bookmarks in a canvas both people are looking at.
@@ -1780,7 +1841,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	// Spawn a new dynamic panel at the given screen position (screen coords → world coords).
 	// Pass fromRemote=true when applying a remote-initiated spawn (skips sync to avoid loops).
 	const spawnPanel = (
-		type: 'youtube' | 'audio' | 'browser' | 'note' | 'code' | 'recorder' | 'image' | 'daw' | 'whiteboard',
+		type: 'youtube' | 'audio' | 'browser' | 'note' | 'code' | 'recorder' | 'image' | 'daw' | 'whiteboard' | 'pdf',
 		screenX: number,
 		screenY: number,
 		extra?: { initialVideoId?: string; initialFile?: File; initialUrl?: string; note?: NoteContent; code?: CodeContent; dimensions?: { width: number; height: number } },
@@ -1791,8 +1852,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		const imageRatio = extra?.dimensions ? extra.dimensions.width / extra.dimensions.height : 4 / 3;
 		const imageWidth = imageRatio >= 1 ? 520 : Math.max(240, 420 * imageRatio);
 		const imageHeight = (imageRatio >= 1 ? Math.max(180, 520 / imageRatio) : 420) + 32;
-		const w = type === 'whiteboard' ? 720 : type === 'daw' ? 900 : type === 'image' ? imageWidth : type === 'browser' ? 560 : type === 'recorder' ? 600 : type === 'code' ? 520 : type === 'youtube' ? 320 : type === 'note' ? 300 : 300;
-		const h = type === 'whiteboard' ? 540 : type === 'daw' ? 480 : type === 'image' ? imageHeight : type === 'browser' ? 420 : type === 'recorder' ? 480 : type === 'code' ? 380 : type === 'youtube' ? 260 : type === 'note' ? 300 : 360;
+		const w = type === 'audio' ? 360 : type === 'pdf' ? 560 : type === 'whiteboard' ? 720 : type === 'daw' ? 900 : type === 'image' ? imageWidth : type === 'browser' ? 560 : type === 'recorder' ? 600 : type === 'code' ? 520 : type === 'youtube' ? 320 : type === 'note' ? 300 : 300;
+		const h = type === 'audio' ? 220 : type === 'pdf' ? 720 : type === 'whiteboard' ? 540 : type === 'daw' ? 480 : type === 'image' ? imageHeight : type === 'browser' ? 420 : type === 'recorder' ? 480 : type === 'code' ? 380 : type === 'youtube' ? 260 : type === 'note' ? 300 : 360;
 		const worldX = (screenX - tx) / scale - w / 2;
 		const worldY = (screenY - ty) / scale - h / 2;
 		const nextZ = ++topZRef.current;
@@ -1806,7 +1867,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			code: extra?.code
 		};
 		setDynamicPanels(prev => [...prev, { id, type, state, ...panelExtra }]);
-		const imageFile = type === 'image' ? extra?.initialFile : undefined;
+		const imageFile = (type === 'image' || type === 'pdf') ? extra?.initialFile : undefined;
 		if (imageFile) setPanelLabels(prev => ({ ...prev, [id]: imageFile.name }));
 		setDockedIds(prev => (prev.includes(id) ? prev : [...prev, id]));
 
@@ -1831,10 +1892,22 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				sendSync({ type: 'spawn-daw', id, state: normalisePanel(state) });
 			} else if (type === 'recorder') {
 				sendSync({ type: 'spawn-recorder', id, state: normalisePanel(state) });
-			} else if (type === 'image') {
-				sendSync({ type: 'spawn-image', id, state: normalisePanel(state) });
+			} else if (type === 'image' || type === 'pdf') {
+				sendSync({ type: type === 'pdf' ? 'spawn-pdf' : 'spawn-image', id, state: normalisePanel(state) });
 				if (extra?.initialFile) sendFileTo(id, extra.initialFile);
 			}
+		}
+	};
+
+	const addPdf = async (file: File, screenX: number, screenY: number, panelId?: string) => {
+		try {
+			const prepared = await preparePdf(file);
+			if (panelId) {
+				updateDynamicPanel(panelId, { initialFile: prepared, mediaFileName: prepared.name });
+				sendFileTo(panelId, prepared);
+			} else spawnPanel('pdf', screenX, screenY, { initialFile: prepared });
+		} catch (error) {
+			setImageToast({ id: crypto.randomUUID(), message: error instanceof Error ? error.message : 'The PDF could not be added.' });
 		}
 	};
 
@@ -1968,6 +2041,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			const { x, y } = pointerRef.current;
 			const px = x || window.innerWidth / 2;
 			const py = y || window.innerHeight / 2;
+			const pdfs = Array.from(e.clipboardData?.files ?? []).filter(isPdfFile);
+			if (pdfs.length) { e.preventDefault(); pdfs.forEach((file, index) => { void addPdf(file, px + index * 30, py + index * 30); }); return; }
 			const image = Array.from(e.clipboardData?.items ?? [])
 				.find(item => item.kind === 'file' && item.type.startsWith('image/'))
 				?.getAsFile();
@@ -2019,6 +2094,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	// Wheel → zoom toward cursor (non-passive so we can preventDefault)
 	useEffect(() => {
 		const onWheel = (e: WheelEvent) => {
+			if (overviewOpenRef.current) return;
 			e.preventDefault();
 			const factor = e.deltaY < 0 ? 1.04 : 1 / 1.04;
 			setCanvas(prev => {
@@ -2041,6 +2117,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		if (!el) return;
 
 		const onTouchStart = (e: TouchEvent) => {
+			if (overviewOpenRef.current) return;
 			if (e.touches.length < 2) return;
 			const t0 = e.touches[0];
 			const t1 = e.touches[1];
@@ -2054,6 +2131,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 		};
 
 		const onTouchMove = (e: TouchEvent) => {
+			if (overviewOpenRef.current) return;
 			if (e.touches.length < 2 || !gestureRef.current) return;
 			e.preventDefault();
 			const t0 = e.touches[0];
@@ -2096,7 +2174,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 	// Space key → pan mode (shows grab-cursor overlay that intercepts all clicks)
 	useEffect(() => {
 		const onDown = (e: KeyboardEvent) => {
-			if (e.code === 'Space' && !(e.target as HTMLElement)?.closest('input, textarea')) {
+			if (overviewOpenRef.current) return;
+			if (e.code === 'Space' && !(e.target as HTMLElement)?.closest('input, textarea, select, button, [contenteditable="true"]')) {
 				e.preventDefault();
 				setIsPanMode(true);
 			}
@@ -2255,6 +2334,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			onDrop={e => {
 				e.preventDefault();
 				setBgDragOver(false);
+				const pdfs = Array.from(e.dataTransfer.files).filter(isPdfFile);
+				if (pdfs.length) { pdfs.forEach((file, index) => { void addPdf(file, e.clientX + index * 30, e.clientY + index * 30); }); return; }
 				const image = Array.from(e.dataTransfer.files).find(file => file.type.startsWith('image/'));
 				if (image) {
 					void addImage(image, e.clientX, e.clientY);
@@ -2276,6 +2357,10 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						});
 				}
 			}}>
+			<input ref={pdfInputRef} type="file" accept="application/pdf,.pdf" multiple className="hidden" onChange={event => {
+				Array.from(event.target.files ?? []).forEach((file, index) => { void addPdf(file, window.innerWidth / 2 + index * 30, window.innerHeight / 2 + index * 30); });
+				event.target.value = '';
+			}} />
 			<input
 				ref={imageInputRef}
 				type="file"
@@ -2301,7 +2386,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			{/* Top bar — fixed overlay, not part of draggable canvas */}
 			<div
 				data-canvas-chrome
-				className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-2 sm:px-4 bg-zinc-950/90 backdrop-blur-sm border-b border-zinc-800/60"
+				className="absolute top-0 left-0 right-0 z-[1000] flex items-center justify-between px-2 sm:px-4 bg-zinc-950/90 backdrop-blur-sm border-b border-zinc-800/60"
 				style={{
 					paddingTop: 'env(safe-area-inset-top)',
 					paddingBottom: '0.5rem'
@@ -2375,6 +2460,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						className="grid w-full grid-cols-[1.25rem_1fr] items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-left text-xs font-medium text-zinc-300 hover:bg-zinc-700">
 						<svg className="h-4 w-4 text-brand-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="18" height="14" rx="2" /><path d="m8 21 4-4 4 4M7 12l3-4 3 3 4-4" /></svg><span>Whiteboard</span>
 					</button>
+					<button onClick={() => pdfInputRef.current?.click()} className="w-full text-left bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-xs font-medium px-3 py-2 rounded-lg" title="Add PDFs">PDF</button>
 					<button
 						onClick={() => imageInputRef.current?.click()}
 						className="grid w-full grid-cols-[1.25rem_1fr] items-center gap-1.5 text-left [&>:first-child]:justify-self-center bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 border border-zinc-700 text-zinc-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors"
@@ -2464,6 +2550,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 								className="w-full text-left px-2.5 py-2 text-xs text-violet-300 rounded-lg hover:bg-zinc-800 disabled:opacity-50">
 								{screenShare.sharing ? 'Stop sharing' : 'Share screen'}
 							</button>
+							<button onClick={() => { pdfInputRef.current?.click(); setWidgetMenuOpen(false); }} className="w-full text-left px-2.5 py-2 text-xs text-zinc-200 rounded-lg hover:bg-zinc-800" title="Add PDFs">PDF</button>
 							<button
 								onClick={() => {
 									imageInputRef.current?.click();
@@ -2642,7 +2729,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				</div>
 			)}
 
-			<Toast key={imageToast?.id} message={imageToast?.message} label="Image upload error" onDismiss={() => setImageToast(null)} />
+			<Toast key={imageToast?.id} message={imageToast?.message} label="File upload error" onDismiss={() => setImageToast(null)} />
 			<Toast message={error} label="Connection error" />
 			<Toast message={screenShare.error} label="Screen sharing error" />
 			<Toast message={mediaError} label="Camera or microphone error" onDismiss={() => setMediaError(null)}
@@ -2695,7 +2782,7 @@ export function Session({ roomCode, isHost }: SessionProps) {
 			/>
 
 			{/* Space-key pan overlay — sits above whiteboard, below panels, grabs all pointer events */}
-			{isPanMode && (
+			{isPanMode && !overviewOpen && (
 				<div
 					style={{
 						position: 'absolute',
@@ -2713,17 +2800,30 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				/>
 			)}
 
+			{overviewOpen && <>
+				<div data-canvas-chrome className="absolute inset-0 z-[1190] bg-zinc-950/95 backdrop-blur-xl" onClick={() => setOverviewOpen(false)} />
+			</>}
 			{/* Infinite canvas — all panels live here and transform together */}
+			<PanelOverviewContext.Provider value={overview}>
 			<div
+				data-panel-canvas
+				data-overview={overviewOpen || undefined}
+				role={overviewOpen ? 'dialog' : undefined}
+				aria-modal={overviewOpen || undefined}
+				aria-label={overviewOpen ? 'All panels' : undefined}
 				style={{
 					position: 'absolute',
 					inset: 0,
-					transform: `translate(${canvas.x}px, ${canvas.y}px) scale(${canvas.scale})`,
+					transform: overviewOpen ? 'none' : `translate(${canvas.x}px, ${canvas.y}px) scale(${canvas.scale})`,
+					zIndex: overviewOpen ? 1200 : undefined,
 					transformOrigin: '0 0',
 					// The wrapper covers the viewport but is visually empty outside
 					// its children. Let those empty areas reach the whiteboard.
 					pointerEvents: 'none'
 				}}>
+				{overviewOpen && (
+				<div data-overview-header data-canvas-chrome className="pointer-events-auto absolute left-6 right-6 top-5 z-[1102] flex items-center justify-between text-white"><div><h2 className="text-lg font-semibold">Show all</h2><p className="text-xs text-zinc-400">{overviewItems.length ? 'Choose a panel to return to it' : 'No panels yet. Add a widget to get started.'}</p></div><button data-overview-close onClick={() => setOverviewOpen(false)} className="rounded-lg border border-white/20 px-3 py-1.5 text-sm">Done</button></div>
+				)}
 				<svg className="absolute inset-0 z-[4] overflow-visible" width="100%" height="100%" aria-label="Panel connections">
 					{connectors.map(connector => {
 						const from = dynamicPanels.find(panel => panel.id === connector.fromPanelId)?.state;
@@ -2872,8 +2972,8 @@ export function Session({ roomCode, isHost }: SessionProps) {
 						excludeFromRecording={panel.type === 'recorder'}
 						{...makeDynamicPanelHandlers(panel.id)}
 						onToggleDock={() => toggleDock(panel.id)}
-						minWidth={panel.type === 'whiteboard' ? 360 : panel.type === 'daw' ? 520 : panel.type === 'browser' ? 360 : panel.type === 'recorder' ? 420 : panel.type === 'code' ? 380 : panel.type === 'youtube' ? 280 : panel.type === 'image' ? 180 : 260}
-						minHeight={panel.type === 'whiteboard' ? 280 : panel.type === 'daw' ? 320 : panel.type === 'browser' ? 240 : panel.type === 'audio' ? 300 : panel.type === 'image' ? 140 : 60}
+						minWidth={panel.type === 'pdf' ? 300 : panel.type === 'whiteboard' ? 360 : panel.type === 'daw' ? 520 : panel.type === 'browser' ? 360 : panel.type === 'recorder' ? 420 : panel.type === 'code' ? 380 : panel.type === 'youtube' ? 280 : panel.type === 'image' ? 180 : 260}
+						minHeight={panel.type === 'pdf' ? 300 : panel.type === 'whiteboard' ? 280 : panel.type === 'daw' ? 320 : panel.type === 'browser' ? 240 : panel.type === 'audio' ? (panel.audioTheme && panel.audioTheme !== 'digital' ? 340 : 200) : panel.type === 'image' ? 140 : 60}
 						scale={canvas.scale}>
 						{zoomTagHandle(panel.id, panelLabels[panel.id] ?? fallbackLabel(panel))}
 						{panel.type === 'whiteboard' ? (
@@ -2959,6 +3059,11 @@ export function Session({ roomCode, isHost }: SessionProps) {
 								docked={dockedIds.includes(panel.id)}
 								onToggleDock={() => toggleDock(panel.id)}
 							/>
+						) : panel.type === 'pdf' ? (
+							<PdfWidget file={panel.initialFile} title={customLabels[panel.id] ?? panel.initialFile?.name ?? panel.mediaFileName ?? 'PDF'} page={panel.pdfPage}
+								transferProgress={transferProgress[panel.id]} onClose={() => removePanel(panel.id)} docked={dockedIds.includes(panel.id)} onToggleDock={() => toggleDock(panel.id)}
+								onRestore={file => { void addPdf(file, 0, 0, panel.id); }}
+								onPageChange={page => { updateDynamicPanel(panel.id, { pdfPage: page }); sendSync({ type: 'pdf-page', id: panel.id, page }); }} />
 						) : panel.type === 'image' ? (
 							<ImageWidget
 								file={panel.initialFile}
@@ -2970,6 +3075,13 @@ export function Session({ roomCode, isHost }: SessionProps) {
 							/>
 						) : panel.type === 'audio' ? (
 							<AudioPlayer
+								theme={panel.audioTheme}
+								onThemeChange={theme => {
+									const state = { ...panel.state, width: Math.max(panel.state.width, theme === 'digital' ? 320 : 400), height: theme === 'digital' ? 220 : theme === 'tape' ? 400 : 420 };
+									updateDynamicPanel(panel.id, { audioTheme: theme, state });
+									sendSync({ type: 'audio-theme', id: panel.id, theme });
+									sendPanelUpdate(panel.id, state);
+								}}
 								title={customLabels[panel.id] ?? panelLabels[panel.id] ?? fallbackLabel(panel)}
 								id={panel.id}
 								dataConnection={dataConnection}
@@ -3020,8 +3132,10 @@ export function Session({ roomCode, isHost }: SessionProps) {
 				))}
 			</div>
 
+			</PanelOverviewContext.Provider>
+			<CanvasSystemControls overview={overviewOpen} onFit={fitScreen} onShowAll={() => setOverviewOpen(open => !open)} />
 			{/* Dock — fixed overlay above the canvas; shortcuts back to docked panels */}
-			<Dock entries={dockEntries} onJump={jumpToPanel} onRemove={removeDockEntry} onRename={renameDockEntry} onPing={pingDockEntry} onParticipantDoubleClick={handleParticipantDoubleClick} onShowAll={showAll} />
+			<Dock entries={dockEntries} onJump={jumpToPanel} onRemove={removeDockEntry} onRename={renameDockEntry} onPing={pingDockEntry} onParticipantDoubleClick={handleParticipantDoubleClick} />
 		</div>
 	);
 }

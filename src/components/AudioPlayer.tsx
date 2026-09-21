@@ -1,3 +1,5 @@
+import { TapeDeck } from './TapeDeck';
+import type { AudioTheme } from '../utils/audioTheme';
 import { useState, useRef, useCallback, useEffect } from "react";
 import { DockButton } from "./Dock";
 import { useYouTubeSync, type SyncMessage } from "../hooks/useYouTubeSync";
@@ -84,7 +86,9 @@ export function AudioPlayer({
   onFileChosen,
   initialPlayback,
   onPlaybackChange,
-  title = "Record Player",
+  title = "Audio",
+  theme = "digital",
+  onThemeChange,
 }: {
   id: string;
   dataConnection: RoomDataConnection | null;
@@ -108,6 +112,8 @@ export function AudioPlayer({
   initialPlayback?: PanelPlayback;
   onPlaybackChange?: (playback: PanelPlayback) => void;
   title?: string;
+  theme?: AudioTheme;
+  onThemeChange?: (theme: AudioTheme) => void;
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const objectUrlRef = useRef<string | null>(null);
@@ -264,10 +270,10 @@ export function AudioPlayer({
       ? "pause"
       : "stop";
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const seekTo = (t: number) => {
     const audio = audioRef.current;
     if (!audio) return;
-    const t = parseFloat(e.target.value);
+    t = Math.max(0, Math.min(t, Number.isFinite(audio.duration) ? audio.duration : 0));
     audio.currentTime = t;
     setCurrentTime(t);
     sendSync({
@@ -357,13 +363,13 @@ export function AudioPlayer({
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="flex flex-col h-full bg-zinc-900 border border-zinc-700 rounded-2xl overflow-hidden">
+    <div data-audio-theme={theme} className="flex flex-col h-full bg-zinc-900 border border-zinc-700 rounded-2xl overflow-hidden">
       {/* Hidden audio element */}
       <audio ref={audioRef} preload="metadata" />
 
       {/* Header / drag handle */}
       <div className="drag-handle flex items-center justify-between px-3 py-2 bg-zinc-800 cursor-grab active:cursor-grabbing select-none shrink-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <svg
             className="w-4 h-4 text-brand-400"
             viewBox="0 0 24 24"
@@ -374,11 +380,14 @@ export function AudioPlayer({
             <circle cx="12" cy="12" r="8" />
             <circle cx="12" cy="12" r="2" />
           </svg>
-          <span className="text-xs font-semibold text-zinc-300">
+          <span className="text-xs font-semibold text-zinc-300 truncate">
             {title}
           </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
+          <select aria-label="Audio player theme" value={theme} onChange={event => onThemeChange?.(event.target.value as AudioTheme)} className="no-drag max-w-24 rounded border border-zinc-600 bg-zinc-900 px-1 py-0.5 text-[10px] text-zinc-300">
+            <option value="digital">Digital</option><option value="record">Record player</option><option value="tape">Tape deck</option>
+          </select>
           {onToggleDock && (
             <DockButton docked={docked} onToggle={onToggleDock} />
           )}
@@ -407,7 +416,7 @@ export function AudioPlayer({
       </div>
 
       {(
-        <div className="flex flex-col flex-1 gap-2 px-3 py-2 min-w-0">
+        <div className="flex flex-col flex-1 gap-2 px-3 py-2 min-w-0 min-h-0 overflow-auto">
           {transferProgress !== undefined && !fileName ? (
             /* ── Arriving over the data channel ── */
             <div className="flex flex-col items-center justify-center flex-1 gap-2 px-3">
@@ -461,8 +470,15 @@ export function AudioPlayer({
           ) : (
             /* ── Player controls ── */
             <>
-              {/* Top-down turntable deck — one SVG drawing so every part
-                  scales with the panel, capped at a sensible size. */}
+              {theme === 'digital' ? (
+                <div className="flex min-h-14 flex-1 items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2">
+                  <button onClick={isPlaying ? pause : play} aria-label={isPlaying ? 'Pause' : 'Play'} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white shadow hover:bg-brand-400">{isPlaying ? 'Ⅱ' : '▶'}</button>
+                  <div className="min-w-0 flex-1"><p className="truncate text-xs text-zinc-300">{fileName}</p><p className="font-mono text-lg tabular-nums text-brand-300">{formatTime(currentTime)} <span className="text-[10px] text-zinc-500">/ {formatTime(duration)}</span></p></div>
+                  <button onClick={stop} aria-label="Stop" className="p-2 text-zinc-400 hover:text-white">■</button>
+                </div>
+              ) : theme === 'tape' ? (
+                <div className="flex flex-1 items-center justify-center"><TapeDeck id={id} name={fileName} playing={isPlaying} progress={progress} play={play} pause={pause} stop={stop} seek={seconds => seekTo(currentTime + seconds)} /></div>
+              ) : (
               <div className="relative flex-1 min-h-0 flex items-center justify-center">
                 <div className="relative w-full max-w-[560px]">
                   <svg
@@ -699,6 +715,8 @@ export function AudioPlayer({
                 </div>
               </div>
 
+              )}
+
               {/* Track name + swap file button */}
               <div className="flex items-center gap-1 min-w-0">
                 <p
@@ -753,7 +771,8 @@ export function AudioPlayer({
                     max={duration || 0}
                     step={0.1}
                     value={currentTime}
-                    onChange={handleSeek}
+                    onChange={event => seekTo(Number(event.target.value))}
+                    aria-label="Audio position"
                     className="absolute inset-0 w-full opacity-0 cursor-pointer h-full"
                   />
                 </div>
@@ -793,6 +812,7 @@ export function AudioPlayer({
                       step={0.02}
                       value={volume}
                       onChange={handleVolume}
+                      aria-label="Audio volume"
                       className="absolute inset-0 w-full opacity-0 cursor-pointer h-full"
                     />
                   </div>

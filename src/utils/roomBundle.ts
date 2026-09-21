@@ -27,7 +27,7 @@ function hasPanelState(value: unknown): boolean {
   return ["x", "y", "width", "height", "z"].every(key => isFiniteNumber(value[key])) && (value.width as number) > 0 && (value.height as number) > 0;
 }
 
-const PANEL_TYPES = new Set(["youtube", "audio", "browser", "note", "code", "recorder", "image", "daw", "whiteboard"]);
+const PANEL_TYPES = new Set(["youtube", "audio", "browser", "note", "code", "recorder", "image", "daw", "whiteboard", "pdf"]);
 
 function hasStringValues(value: Record<string, unknown>): boolean {
   return Object.values(value).every(item => typeof item === "string");
@@ -62,6 +62,9 @@ function isRecording(value: unknown): boolean {
 
 function isPanel(value: unknown): boolean {
   if (!isObject(value) || typeof value.id !== "string" || typeof value.type !== "string" || !PANEL_TYPES.has(value.type) || !hasPanelState(value.state)) return false;
+  if (value.audioTheme !== undefined && !["digital", "record", "tape"].includes(value.audioTheme as string)) return false;
+  if (value.pdfPage !== undefined && (typeof value.pdfPage !== "number" || !Number.isSafeInteger(value.pdfPage) || value.pdfPage < 1)) return false;
+  if (value.pdfFileName !== undefined && typeof value.pdfFileName !== "string") return false;
   if (value.browserScroll !== undefined && !validBrowserScroll(value.browserScroll)) return false;
   if (value.whiteboard !== undefined && !validBoard(value.whiteboard)) return false;
   if (value.dawTracks !== undefined && (!Array.isArray(value.dawTracks) || value.dawTracks.length > 1000 || !value.dawTracks.every(track => normaliseDawTrack(track) !== null))) return false;
@@ -107,7 +110,7 @@ export function parseRoomBundle(source: string): RoomSnapshot {
     throw new Error("That file is not valid JSON.");
   }
   if (!isObject(parsed) || parsed.format !== BUNDLE_FORMAT || parsed.version !== BUNDLE_VERSION) {
-    throw new Error("That is not a supported maketogether room bundle.");
+    throw new Error("That is not a supported Make Together room bundle.");
   }
   if (!isSnapshot(parsed.snapshot)) {
     throw new Error(`This bundle is damaged or uses an unsupported room-state version (expected ${ROOM_STATE_VERSION}).`);

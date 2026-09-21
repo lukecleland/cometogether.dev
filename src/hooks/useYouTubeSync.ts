@@ -1,3 +1,4 @@
+import type { AudioTheme } from '../utils/audioTheme';
 import type { BoardChange } from "../utils/whiteboardPanel";
 import type { DawTrack } from "../utils/daw";
 import { useCallback, useEffect, useEffectEvent } from 'react';
@@ -83,6 +84,9 @@ export type SyncMessage =
 	| { type: 'spawn-browser'; id: string; url?: string; state: PanelState }
 	| { type: 'spawn-whiteboard'; id: string; state: PanelState }
 	| { type: 'whiteboard-change'; id: string; change: BoardChange }
+	| { type: 'spawn-pdf'; id: string; state: PanelState }
+	| { type: 'audio-theme'; id: string; theme: AudioTheme }
+	| { type: 'pdf-page'; id: string; page: number }
 	| { type: 'spawn-image'; id: string; state: PanelState }
 	| { type: 'browser-load'; id: string; url: string }
 	| { type: 'browser-scroll'; id: string; url: string; position: number }
